@@ -1,0 +1,58 @@
+# ========================
+# Node.js / Frontend
+# ========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ========================
+# Go / Backend
+# ========================
+backend/pilihin.db
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+backend/bin/
+backend/tmp/
+
+# ========================
+# OS & Editor
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# ========================
+# Misc
+# ========================
+*.log
+*.tmp
+*.swp
+*.swo
+dist/
+coverage/
