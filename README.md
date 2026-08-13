@@ -66,6 +66,17 @@ cd frontend && npm run build
 
 `AutoMigrate` akan membuat tabel aplikasi saat backend pertama kali terhubung. SQLite hanya digunakan sebagai database in-memory pada unit test, bukan pada runtime aplikasi.
 
+## Backup database
+
+Buat dump struktur dan data MySQL dengan utilitas Go:
+
+```bash
+cd backend
+go run ./cmd/db-dump
+```
+
+Hasil dump tersimpan di `backend/database/dumps/kleiora-YYYYMMDD-HHMMSS.sql`. File SQL diabaikan Git karena berisi data aplikasi dan hash password pengguna.
+
 ## Catatan pembayaran
 
 Versi ini tidak membuat QRIS atau Virtual Account palsu. Booking dibuat dengan status `pending_payment`; pelanggan dapat mengunggah bukti JPG/PNG dan admin memverifikasinya dari dashboard. Integrasi payment gateway dapat ditambahkan sebagai tahap tersendiri.
