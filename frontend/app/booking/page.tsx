@@ -30,6 +30,28 @@ function BookingFlow() {
   const [proof, setProof] = useState<File | null>(null);
   const [proofSent, setProofSent] = useState(false);
   const [form, setForm] = useState({ full_name: '', campus_name: '', whatsapp: '', session_date: '', session_hour: '', session_location: '', payment_type: 'full', notes: '' });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  function updateField(field: keyof typeof form, value: string) {
+    setForm(current => ({ ...current, [field]: value }));
+    setFieldErrors(current => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function validateForm() {
+    const errors: Record<string, string> = {};
+    if (form.full_name.trim().length < 3) errors.full_name = 'Masukkan nama lengkap minimal 3 karakter.';
+    if (form.campus_name.trim().length < 2) errors.campus_name = 'Masukkan nama kampus.';
+    if (!/^[0-9+][0-9 -]{7,19}$/.test(form.whatsapp.trim())) errors.whatsapp = 'Gunakan nomor WhatsApp yang valid, misalnya 081234567890.';
+    if (!form.session_date) errors.session_date = 'Pilih tanggal sesi.';
+    if (!form.session_hour) errors.session_hour = 'Pilih jam sesi yang tersedia.';
+    if (form.session_location.trim().length < 3) errors.session_location = 'Masukkan lokasi sesi.';
+    return errors;
+  }
 
   useEffect(() => {
     apiRequest<{ packages: PackageItem[] }>('/packages')
@@ -56,6 +78,13 @@ function BookingFlow() {
   async function createBooking(event: FormEvent) {
     event.preventDefault();
     setError('');
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setError('Periksa kembali data yang ditandai di bawah ini.');
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const result = await apiRequest<{ booking: BookingItem }>('/bookings', { method: 'POST', body: JSON.stringify({ ...form, package_code: selectedCode }) });
@@ -111,15 +140,15 @@ function BookingFlow() {
         {step === 2 && selectedPackage && (
           <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
             <aside className="h-fit rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 lg:sticky lg:top-28"><div className="relative aspect-[4/3] overflow-hidden rounded-xl"><Image src={selectedPackage.image_path} alt={selectedPackage.name} fill className="object-cover" sizes="300px" /></div><h2 className="mt-5 font-serif text-2xl font-semibold">{selectedPackage.name}</h2><p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(selectedPackage.price)}</p><p className="mt-4 text-xs leading-5 text-[var(--muted)]">Kuota pilihan setelah sesi: {selectedPackage.edited_photos} foto.</p><button onClick={() => setStep(1)} className="btn-secondary mt-5 w-full px-4 py-2.5 text-sm"><ArrowLeft className="h-4 w-4" /> Ubah Paket</button></aside>
-            <form onSubmit={createBooking} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 sm:p-8">
+            <form noValidate onSubmit={createBooking} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 sm:p-8">
               <h2 className="font-serif text-3xl font-medium">Lengkapi data dirimu</h2><p className="mt-2 text-sm text-[var(--muted)]">Kami menggunakan data ini untuk mengatur jadwal dan menghubungimu.</p>
               <div className="mt-8 grid gap-5 sm:grid-cols-2">
-                <Field label="Nama lengkap"><input required value={form.full_name} onChange={e => setForm({...form, full_name:e.target.value})} className="field" placeholder="Nama lengkapmu" /></Field>
-                <Field label="Asal kampus"><input required value={form.campus_name} onChange={e => setForm({...form, campus_name:e.target.value})} className="field" placeholder="Universitas / kampus" /></Field>
-                <Field label="Nomor WhatsApp"><input required type="tel" value={form.whatsapp} onChange={e => setForm({...form, whatsapp:e.target.value})} className="field" placeholder="08xxxxxxxxxx" /></Field>
-                <Field label="Tanggal sesi"><input required type="date" min={todayInMakassar()} value={form.session_date} onChange={e => setForm({...form, session_date:e.target.value})} className="field" /></Field>
-                <Field label="Jam sesi (WITA)"><select required disabled={!form.session_date || slotsLoading} value={form.session_hour} onChange={e => setForm({...form, session_hour:e.target.value})} className="field"><option value="">{slotsLoading ? 'Memeriksa jadwal...' : 'Pilih jam'}</option>{slots.map(slot => <option key={slot.hour} value={slot.hour} disabled={!slot.available}>{slot.hour}.00 WITA {slot.available ? `— tersisa ${slot.remaining}` : '— penuh'}</option>)}</select></Field>
-                <Field label="Lokasi sesi"><input required value={form.session_location} onChange={e => setForm({...form, session_location:e.target.value})} className="field" placeholder="Lokasi atau area pilihan" /></Field>
+                <Field label="Nama lengkap" error={fieldErrors.full_name}><input required aria-invalid={Boolean(fieldErrors.full_name)} value={form.full_name} onChange={e => updateField('full_name', e.target.value)} className="field" placeholder="Nama lengkapmu" /></Field>
+                <Field label="Asal kampus" error={fieldErrors.campus_name}><input required aria-invalid={Boolean(fieldErrors.campus_name)} value={form.campus_name} onChange={e => updateField('campus_name', e.target.value)} className="field" placeholder="Universitas / kampus" /></Field>
+                <Field label="Nomor WhatsApp" error={fieldErrors.whatsapp}><input required type="tel" inputMode="tel" autoComplete="tel" aria-invalid={Boolean(fieldErrors.whatsapp)} value={form.whatsapp} onChange={e => updateField('whatsapp', e.target.value)} className="field" placeholder="Contoh: 081234567890" /></Field>
+                <Field label="Tanggal sesi" error={fieldErrors.session_date}><input required type="date" min={todayInMakassar()} aria-invalid={Boolean(fieldErrors.session_date)} value={form.session_date} onChange={e => updateField('session_date', e.target.value)} className="field" /></Field>
+                <Field label="Jam sesi (WITA)" error={fieldErrors.session_hour}><select required disabled={!form.session_date || slotsLoading} aria-invalid={Boolean(fieldErrors.session_hour)} value={form.session_hour} onChange={e => updateField('session_hour', e.target.value)} className="field"><option value="">{slotsLoading ? 'Memeriksa jadwal...' : 'Pilih jam'}</option>{slots.map(slot => <option key={slot.hour} value={slot.hour} disabled={!slot.available}>{slot.hour}.00 WITA {slot.available ? `— tersisa ${slot.remaining}` : '— penuh'}</option>)}</select></Field>
+                <Field label="Lokasi sesi" error={fieldErrors.session_location}><input required aria-invalid={Boolean(fieldErrors.session_location)} value={form.session_location} onChange={e => updateField('session_location', e.target.value)} className="field" placeholder="Lokasi atau area pilihan" /></Field>
               </div>
               <div className="mt-5"><Field label="Catatan (opsional)"><textarea rows={3} value={form.notes} onChange={e => setForm({...form, notes:e.target.value})} className="field resize-none" placeholder="Informasi tambahan untuk tim kami" /></Field></div>
               <div className="mt-6"><p className="mb-3 text-sm font-bold">Pilihan pembayaran</p><div className="grid gap-3 sm:grid-cols-2"><label className={`cursor-pointer rounded-xl border p-4 ${form.payment_type === 'full' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)]'}`}><input type="radio" className="mr-2" checked={form.payment_type === 'full'} onChange={() => setForm({...form,payment_type:'full'})} />Lunas · {formatRupiah(selectedPackage.price)}</label><label className={`cursor-pointer rounded-xl border p-4 ${form.payment_type === 'dp' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)]'}`}><input type="radio" className="mr-2" checked={form.payment_type === 'dp'} onChange={() => setForm({...form,payment_type:'dp'})} />DP 50% · {formatRupiah(selectedPackage.price / 2)}</label></div></div>
@@ -136,12 +165,12 @@ function BookingFlow() {
         )}
       </main>
       <SiteFooter />
-      <style jsx global>{`.field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.field:focus{border-color:var(--gold)}.field:disabled{opacity:.6}`}</style>
+      <style jsx global>{`.field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.field:focus{border-color:var(--gold)}.field[aria-invalid="true"]{border-color:#ef4444;background:#fffafa}.field:disabled{opacity:.6}`}</style>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-bold">{label}</span>{children}</label>; }
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) { return <label className="block"><span className="mb-2 block text-sm font-bold">{label}</span>{children}{error && <span className="mt-1.5 block text-xs text-red-600">{error}</span>}</label>; }
 function Detail({ label, value }: { label: string; value: string }) { return <div><span className="block text-xs text-[var(--muted)]">{label}</span><strong>{value}</strong></div>; }
 
 export default function BookingPage() {

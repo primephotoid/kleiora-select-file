@@ -48,6 +48,15 @@ npm run dev
 Frontend tersedia di `http://localhost:3000` dan API di `http://localhost:4000`.
 Pada instalasi baru, halaman `/studio/login` menyediakan pendaftaran akun studio pertama. Setelah akun pertama dibuat, endpoint pendaftaran otomatis ditutup.
 
+Untuk membuat atau memperbarui akun admin dari konfigurasi `backend/.env`:
+
+```bash
+cd backend
+go run ./cmd/seed-admin
+```
+
+Seeder membaca `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`, dan `ADMIN_STUDIO_NAME`. Password minimal 12 karakter dan disimpan sebagai hash bcrypt; menjalankan perintah kembali akan memperbarui akun dengan email yang sama.
+
 ## Verifikasi
 
 ```bash

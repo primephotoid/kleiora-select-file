@@ -94,7 +94,7 @@ func main() {
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PATCH,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization"}))
+	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PATCH,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization", AllowCredentials: true}))
 	app.Use(limiter.New(limiter.Config{Max: 120, Expiration: time.Minute, LimitReached: func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Too many requests"})
 	}}))
@@ -105,6 +105,7 @@ func main() {
 	api := app.Group("/api/v1")
 	api.Post("/auth/register", h.Register)
 	api.Post("/auth/login", h.Login)
+	api.Post("/auth/logout", h.Logout)
 	api.Get("/packages", h.ListPackages)
 	api.Get("/availability", h.GetAvailability)
 	api.Post("/bookings", h.CreateBooking)
@@ -114,9 +115,10 @@ func main() {
 	api.Get("/galleries/:slug", h.GetGalleryBySlug)
 	api.Post("/galleries/:slug/select", h.SubmitSelection)
 
-	studio := api.Group("/studio", h.AuthRequired)
+	studio := api.Group("/studio", h.AdminRequired)
 	studio.Get("/bookings", h.ListBookings)
 	studio.Patch("/bookings/:code/verify-payment", h.VerifyBookingPayment)
+	studio.Get("/bookings/:code/payment-proof", h.ViewPaymentProof)
 	studio.Get("/galleries", h.ListGalleries)
 	studio.Post("/galleries", h.CreateGallery)
 	studio.Get("/galleries/:slug/export", h.ExportSelection)

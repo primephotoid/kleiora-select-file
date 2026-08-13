@@ -66,10 +66,9 @@ func (s *DriveService) FetchPhotosFromFolder(ctx context.Context, folderID strin
 		return nil, fmt.Errorf("list Google Drive folder: %w", err)
 	}
 	for _, f := range res.Files {
-		thumbURL := f.ThumbnailLink
-		if thumbURL == "" {
-			thumbURL = fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w600", f.Id)
-		}
+		// thumbnailLink dari Drive bersifat sementara. URL berbasis file ID
+		// tetap stabil selama file dapat diakses secara publik.
+		thumbURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w600", f.Id)
 		viewURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w1600", f.Id)
 
 		width, height := 0, 0

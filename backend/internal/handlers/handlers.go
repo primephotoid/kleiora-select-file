@@ -55,13 +55,19 @@ func apiError(c *fiber.Ctx, status int, message string) error {
 	return c.Status(status).JSON(fiber.Map{"error": message})
 }
 
-func (h *Handler) AuthRequired(c *fiber.Ctx) error {
+func (h *Handler) authenticate(c *fiber.Ctx) error {
 	header := c.Get(fiber.HeaderAuthorization)
-	if !strings.HasPrefix(header, "Bearer ") {
+	rawToken := ""
+	if strings.HasPrefix(header, "Bearer ") {
+		rawToken = strings.TrimPrefix(header, "Bearer ")
+	} else {
+		rawToken = c.Cookies("kleiora_token")
+	}
+	if rawToken == "" {
 		return apiError(c, fiber.StatusUnauthorized, "Authentication required")
 	}
 
-	token, err := jwt.Parse(strings.TrimPrefix(header, "Bearer "), func(token *jwt.Token) (any, error) {
+	token, err := jwt.Parse(rawToken, func(token *jwt.Token) (any, error) {
 		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, errors.New("unexpected signing method")
 		}
@@ -80,6 +86,27 @@ func (h *Handler) AuthRequired(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusUnauthorized, "Invalid token subject")
 	}
 	c.Locals("user_id", userID)
+	return nil
+}
+
+func (h *Handler) AuthRequired(c *fiber.Ctx) error {
+	if err := h.authenticate(c); err != nil {
+		return err
+	}
+	return c.Next()
+}
+
+func (h *Handler) AdminRequired(c *fiber.Ctx) error {
+	if err := h.authenticate(c); err != nil {
+		return err
+	}
+	var user models.User
+	if err := h.db.Select("id", "role").First(&user, c.Locals("user_id")).Error; err != nil {
+		return apiError(c, fiber.StatusUnauthorized, "Akun tidak ditemukan")
+	}
+	if user.Role != "admin" {
+		return apiError(c, fiber.StatusForbidden, "Akses hanya tersedia untuk admin")
+	}
 	return c.Next()
 }
 
@@ -130,7 +157,13 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to generate token")
 	}
+	c.Cookie(&fiber.Cookie{Name: "kleiora_token", Value: token, Path: "/", HTTPOnly: true, Secure: h.cfg.Environment == "production", SameSite: "Lax", Expires: now.Add(24 * time.Hour)})
 	return c.JSON(fiber.Map{"token": token, "user": user})
+}
+
+func (h *Handler) Logout(c *fiber.Ctx) error {
+	c.Cookie(&fiber.Cookie{Name: "kleiora_token", Value: "", Path: "/", HTTPOnly: true, Secure: h.cfg.Environment == "production", SameSite: "Lax", Expires: time.Unix(0, 0)})
+	return c.JSON(fiber.Map{"message": "Berhasil keluar"})
 }
 
 func (h *Handler) ListPackages(c *fiber.Ctx) error {
@@ -162,7 +195,7 @@ func validSessionDate(value string) bool {
 func (h *Handler) GetAvailability(c *fiber.Ctx) error {
 	date := c.Query("date")
 	if !validSessionDate(date) {
-		return apiError(c, fiber.StatusBadRequest, "A current or future date in YYYY-MM-DD format is required")
+		return apiError(c, fiber.StatusBadRequest, "Pilih tanggal hari ini atau setelahnya")
 	}
 	type slot struct {
 		Hour      string `json:"hour"`
@@ -186,7 +219,7 @@ func (h *Handler) GetAvailability(c *fiber.Ctx) error {
 func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	var req models.CreateBookingRequest
 	if err := c.BodyParser(&req); err != nil {
-		return apiError(c, fiber.StatusBadRequest, "Invalid request body")
+		return apiError(c, fiber.StatusBadRequest, "Data booking tidak dapat dibaca")
 	}
 	req.PackageCode = strings.ToLower(strings.TrimSpace(req.PackageCode))
 	req.FullName = strings.TrimSpace(req.FullName)
@@ -196,12 +229,24 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if req.PaymentType == "" {
 		req.PaymentType = "full"
 	}
-	if req.FullName == "" || req.CampusName == "" || req.SessionLocation == "" || !whatsAppPattern.MatchString(req.WhatsApp) || !validSessionDate(req.SessionDate) || !hourPattern.MatchString(req.SessionHour) || (req.PaymentType != "full" && req.PaymentType != "dp") {
-		return apiError(c, fiber.StatusBadRequest, "Complete the booking form with valid customer, date, time, and payment data")
+	if req.FullName == "" || req.CampusName == "" || req.SessionLocation == "" {
+		return apiError(c, fiber.StatusBadRequest, "Lengkapi nama, kampus, dan lokasi sesi")
+	}
+	if !whatsAppPattern.MatchString(req.WhatsApp) {
+		return apiError(c, fiber.StatusBadRequest, "Nomor WhatsApp tidak valid; gunakan minimal 8 digit, misalnya 081234567890")
+	}
+	if !validSessionDate(req.SessionDate) {
+		return apiError(c, fiber.StatusBadRequest, "Tanggal sesi tidak valid atau sudah lewat")
+	}
+	if !hourPattern.MatchString(req.SessionHour) {
+		return apiError(c, fiber.StatusBadRequest, "Pilih jam sesi yang valid")
+	}
+	if req.PaymentType != "full" && req.PaymentType != "dp" {
+		return apiError(c, fiber.StatusBadRequest, "Pilihan pembayaran tidak valid")
 	}
 	var pkg models.Package
 	if err := h.db.Where("code = ? AND is_active = ?", req.PackageCode, true).First(&pkg).Error; err != nil {
-		return apiError(c, fiber.StatusBadRequest, "Selected package is not available")
+		return apiError(c, fiber.StatusBadRequest, "Paket yang dipilih tidak tersedia")
 	}
 	code, err := randomToken(10)
 	if err != nil {
@@ -224,7 +269,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	})
 	if err != nil {
 		if err.Error() == "slot_full" {
-			return apiError(c, fiber.StatusConflict, "The selected session is already full")
+			return apiError(c, fiber.StatusConflict, "Jadwal sesi yang dipilih sudah penuh")
 		}
 		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
 	}
@@ -303,6 +348,24 @@ func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to verify payment")
 	}
 	return c.JSON(fiber.Map{"message": "Payment verified and booking confirmed"})
+}
+
+func (h *Handler) ViewPaymentProof(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
+	}
+	if booking.PaymentProofPath == "" {
+		return apiError(c, fiber.StatusNotFound, "Bukti pembayaran belum dikirim")
+	}
+	absolutePath, err := filepath.Abs(booking.PaymentProofPath)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Bukti pembayaran tidak dapat dibuka")
+	}
+	if _, err := os.Stat(absolutePath); err != nil {
+		return apiError(c, fiber.StatusNotFound, "File bukti pembayaran tidak ditemukan")
+	}
+	return c.SendFile(absolutePath)
 }
 
 func (h *Handler) DemoParseDrive(c *fiber.Ctx) error {

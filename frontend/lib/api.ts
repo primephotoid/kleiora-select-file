@@ -29,11 +29,15 @@ export interface BookingItem {
   amount_due: number;
   payment_status: string;
   status: string;
+  payment_method?: string;
+  notes?: string;
+  created_at?: string;
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    credentials: 'include',
     headers: init?.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init?.headers },
   });
   const payload = await response.json().catch(() => ({}));
