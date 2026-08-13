@@ -25,6 +25,7 @@ frontend/build/
 # Go / Backend
 # ========================
 backend/pilihin.db
+backend/kleiora.db
 backend/*.db
 backend/*.db-shm
 backend/*.db-wal
@@ -35,6 +36,8 @@ backend/*.db-wal
 *.dylib
 backend/bin/
 backend/tmp/
+backend/cmd/server/tmp/
+backend/uploads/
 
 # ========================
 # OS & Editor
@@ -56,3 +59,4 @@ desktop.ini
 *.swo
 dist/
 coverage/
+*.tsbuildinfo

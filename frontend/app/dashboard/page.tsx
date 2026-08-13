@@ -1,231 +1,57 @@
 'use client';
 
-import { useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Copy, Check, Eye, FolderPlus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CalendarDays, Check, Copy, Images, Loader2, LogOut, Plus, ReceiptText, X } from 'lucide-react';
+import { apiRequest, BookingItem, formatRupiah } from '@/lib/api';
 
-export default function PhotographerDashboardPage() {
-  const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newClient, setNewClient] = useState('');
-  const [newDriveUrl, setNewDriveUrl] = useState('');
-  const [selectedGalleryFiles, setSelectedGalleryFiles] = useState<string[]>([
-    'WEDDING_AKAD_001.JPG',
-    'WEDDING_RESEPSI_014.JPG',
-    'WEDDING_RING_002.JPG',
-  ]);
+interface GalleryItem { id: number; slug: string; title: string; client_name: string; max_selection: number; status: string; booking_id?: number; photos?: object[]; selection?: { total_selected: number } }
 
-  const copyToClipboard = (text: string, formatName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedFormat(formatName);
-    setTimeout(() => setCopiedFormat(null), 2500);
-  };
+export default function DashboardPage() {
+  const router = useRouter();
+  const [bookings, setBookings] = useState<BookingItem[]>([]);
+  const [galleries, setGalleries] = useState<GalleryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState<'bookings'|'galleries'>('bookings');
+  const [showCreate, setShowCreate] = useState(false);
+  const [copied, setCopied] = useState('');
+  const [form, setForm] = useState({ title:'', drive_url:'', client_name:'', client_email:'', booking_id:'', max_selection:0 });
 
-  return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-10">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-widest text-[var(--gold)] mb-1">
-              Dashboard Studio
-            </div>
-            <h1 className="font-serif text-3xl font-medium">Kelola Galeri & Rekap Seleksi</h1>
-          </div>
+  function authHeaders() { return { Authorization: `Bearer ${localStorage.getItem('kleiora_token') ?? ''}` }; }
+  async function load() {
+    const token = localStorage.getItem('kleiora_token');
+    if (!token) { router.replace('/studio/login'); return; }
+    try {
+      const [bookingData, galleryData] = await Promise.all([
+        apiRequest<{bookings:BookingItem[]}>('/studio/bookings', { headers: authHeaders() }),
+        apiRequest<{galleries:GalleryItem[]}>('/studio/galleries', { headers: authHeaders() }),
+      ]);
+      setBookings(bookingData.bookings); setGalleries(galleryData.galleries);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Data studio gagal dimuat.'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-[var(--gold)] text-[var(--on-gold)] font-bold text-xs px-5 py-3 rounded-full inline-flex items-center gap-2 hover:brightness-105 transition-all shadow-sm cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            Buat Galeri Baru
-          </button>
-        </div>
+  async function verify(code:string) {
+    try { await apiRequest(`/studio/bookings/${code}/verify-payment`, { method:'PATCH', headers:authHeaders() }); await load(); }
+    catch(err) { setError(err instanceof Error ? err.message : 'Verifikasi gagal.'); }
+  }
+  async function createGallery(event:FormEvent) {
+    event.preventDefault(); setError('');
+    try {
+      const payload = {...form, booking_id: form.booking_id ? Number(form.booking_id) : undefined};
+      await apiRequest('/studio/galleries', { method:'POST', headers:authHeaders(), body:JSON.stringify(payload) });
+      setShowCreate(false); setForm({title:'',drive_url:'',client_name:'',client_email:'',booking_id:'',max_selection:0}); await load(); setTab('galleries');
+    } catch(err) { setError(err instanceof Error ? err.message : 'Galeri gagal dibuat.'); }
+  }
+  function logout(){ localStorage.removeItem('kleiora_token'); localStorage.removeItem('kleiora_user'); router.push('/studio/login'); }
+  async function copyLink(slug:string){ const url=`${window.location.origin}/g/${slug}`; await navigator.clipboard.writeText(url); setCopied(slug); setTimeout(()=>setCopied(''),1800); }
 
-        {/* GALLERY CARDS GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Card 1 */}
-          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-6 flex flex-col justify-between space-y-4 hover:border-[var(--gold)] transition-all">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
-                  Seleksi Selesai
-                </span>
-                <span className="text-xs text-[var(--muted)]">12 Agu 2026</span>
-              </div>
-              <h3 className="font-bold text-lg mb-1">Album Pernikahan: Budi & Anisa</h3>
-              <p className="text-xs text-[var(--muted)]">Klien: Anisa Putri</p>
-            </div>
-
-            <div className="text-xs text-[var(--muted)] space-y-1 pt-2 border-t border-[var(--line)]">
-              <div>Total Foto Drive: <b>12 Foto</b></div>
-              <div>Foto Dipilih Klien: <b className="text-[var(--gold)]">3 Foto</b></div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <Link
-                href="/g/wedding-budi-anisa"
-                className="flex-1 text-center py-2 text-xs font-semibold rounded-full border border-[var(--line)] hover:border-[var(--gold)] hover:bg-[var(--surface2)] transition-all"
-              >
-                Lihat Galeri
-              </Link>
-              <button
-                onClick={() => setShowExportModal(true)}
-                className="flex-1 py-2 text-xs font-bold rounded-full bg-[var(--gold)] text-[var(--on-gold)] hover:brightness-105 transition-all"
-              >
-                Ekspor Rekap
-              </button>
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-6 flex flex-col justify-between space-y-4 hover:border-[var(--gold)] transition-all">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--gold)] bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full">
-                  Aktif (Menunggu Klien)
-                </span>
-                <span className="text-xs text-[var(--muted)]">10 Agu 2026</span>
-              </div>
-              <h3 className="font-bold text-lg mb-1">Prewedding Outdoor: Dimas & Sarah</h3>
-              <p className="text-xs text-[var(--muted)]">Klien: Dimas Anggara</p>
-            </div>
-
-            <div className="text-xs text-[var(--muted)] space-y-1 pt-2 border-t border-[var(--line)]">
-              <div>Total Foto Drive: <b>24 Foto</b></div>
-              <div>Foto Dipilih Klien: <b>0 Foto</b></div>
-            </div>
-
-            <div className="pt-2">
-              <Link
-                href="/g/wedding-budi-anisa"
-                className="w-full block text-center py-2 text-xs font-semibold rounded-full border border-[var(--line)] hover:border-[var(--gold)] hover:bg-[var(--surface2)] transition-all"
-              >
-                Lihat Tampilan Klien
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        {/* EXPORT REKAP MODAL */}
-        {showExportModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl max-w-lg w-full p-6 space-y-4">
-              <h3 className="font-serif text-xl font-semibold">Rekap Seleksi (Adobe Lightroom Ready)</h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Salin daftar nama file di bawah ini dan langsung tempel di kolom pencarian Adobe Lightroom atau Windows File Explorer.
-              </p>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Format Dipisah Koma (Search Lightroom):</label>
-                <textarea
-                  readOnly
-                  value={selectedGalleryFiles.join(', ')}
-                  rows={2}
-                  className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2.5 text-xs font-mono text-[var(--gold)] outline-none"
-                />
-                <button
-                  onClick={() => copyToClipboard(selectedGalleryFiles.join(', '), 'comma')}
-                  className="mt-2 text-xs font-bold text-[var(--gold)] flex items-center gap-1 hover:underline"
-                >
-                  {copiedFormat === 'comma' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedFormat === 'comma' ? 'Tersalin!' : 'Salin Format Koma'}
-                </button>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Format Per Baris (Daftar Cetak):</label>
-                <textarea
-                  readOnly
-                  value={selectedGalleryFiles.join('\n')}
-                  rows={3}
-                  className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2.5 text-xs font-mono text-[var(--gold)] outline-none"
-                />
-                <button
-                  onClick={() => copyToClipboard(selectedGalleryFiles.join('\n'), 'line')}
-                  className="mt-2 text-xs font-bold text-[var(--gold)] flex items-center gap-1 hover:underline"
-                >
-                  {copiedFormat === 'line' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedFormat === 'line' ? 'Tersalin!' : 'Salin Per Baris'}
-                </button>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="px-5 py-2 rounded-full text-xs font-bold bg-[var(--gold)] text-[var(--on-gold)] hover:brightness-105"
-                >
-                  Selesai
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CREATE GALLERY MODAL */}
-        {showCreateModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl max-w-md w-full p-6 space-y-4">
-              <h3 className="font-serif text-xl font-semibold">Buat Galeri Klien Baru</h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">
-                Masukkan tautan folder Google Drive publik untuk membuat galeri seleksi interaktif bagi klien Anda.
-              </p>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Judul Album / Galeri</label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Graduation Photo — Siska & Friends"
-                  value={newTitle}
-                  onChange={e => setNewTitle(e.target.value)}
-                  className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2.5 text-xs outline-none focus:border-[var(--gold)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Nama Klien</label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Siska Amelia"
-                  value={newClient}
-                  onChange={e => setNewClient(e.target.value)}
-                  className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2.5 text-xs outline-none focus:border-[var(--gold)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">Link Folder Google Drive (Publik)</label>
-                <input
-                  type="text"
-                  placeholder="https://drive.google.com/drive/folders/..."
-                  value={newDriveUrl}
-                  onChange={e => setNewDriveUrl(e.target.value)}
-                  className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2.5 text-xs outline-none focus:border-[var(--gold)]"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-full text-xs font-semibold border border-[var(--line)] hover:bg-[var(--surface2)]"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    alert('Galeri berhasil dibuat!');
-                  }}
-                  className="px-5 py-2 rounded-full text-xs font-bold bg-[var(--gold)] text-[var(--on-gold)] hover:brightness-105"
-                >
-                  Simpan & Buat Galeri
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-[var(--bg)]"><header className="border-b border-[var(--line)] bg-[var(--surface)]"><div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6"><Link href="/" className="font-serif text-2xl font-semibold">Kleiora<span className="text-[var(--gold)]">.studio</span></Link><button onClick={logout} className="btn-secondary px-4 py-2 text-xs"><LogOut className="h-4 w-4"/>Keluar</button></div></header><main className="mx-auto max-w-6xl px-6 py-12"><div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Dashboard studio</p><h1 className="mt-2 font-serif text-4xl">Booking & galeri klien</h1></div><button onClick={()=>setShowCreate(true)} className="btn-primary px-5 py-3 text-sm"><Plus className="h-4 w-4"/>Buat Galeri</button></div>{error&&<div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</div>}<div className="mt-9 flex gap-2 border-b border-[var(--line)]"><button onClick={()=>setTab('bookings')} className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold ${tab==='bookings'?'border-[var(--gold)] text-[var(--gold-dark)]':'border-transparent text-[var(--muted)]'}`}><ReceiptText className="h-4 w-4"/>Booking ({bookings.length})</button><button onClick={()=>setTab('galleries')} className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold ${tab==='galleries'?'border-[var(--gold)] text-[var(--gold-dark)]':'border-transparent text-[var(--muted)]'}`}><Images className="h-4 w-4"/>Galeri ({galleries.length})</button></div>{loading?<div className="flex justify-center py-24"><Loader2 className="h-7 w-7 animate-spin"/></div>:tab==='bookings'?<div className="mt-6 overflow-x-auto rounded-2xl border border-[var(--line)] bg-[var(--surface)]"><table className="w-full min-w-[800px] text-left text-sm"><thead className="bg-[var(--surface2)] text-xs uppercase text-[var(--muted)]"><tr><th className="p-4">Pelanggan</th><th className="p-4">Jadwal</th><th className="p-4">Paket</th><th className="p-4">Pembayaran</th><th className="p-4">Aksi</th></tr></thead><tbody>{bookings.map(item=><tr key={item.id} className="border-t border-[var(--line)]"><td className="p-4"><strong>{item.full_name}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{item.code}</span></td><td className="p-4"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]"/>{item.session_date} · {item.session_hour}.00 WITA</span><span className="mt-1 block text-xs text-[var(--muted)]">{item.session_location}</span></td><td className="p-4">{item.package.name}<span className="block text-xs text-[var(--muted)]">{formatRupiah(item.amount_due)}</span></td><td className="p-4"><Status value={item.payment_status}/></td><td className="p-4">{item.payment_status==='submitted'&&<button onClick={()=>verify(item.code)} className="rounded-full bg-emerald-700 px-4 py-2 text-xs font-bold text-white">Verifikasi</button>}</td></tr>)}</tbody></table>{!bookings.length&&<Empty text="Belum ada booking masuk."/>}</div>:<div className="mt-6 grid gap-5 md:grid-cols-2 lg:grid-cols-3">{galleries.map(g=><article key={g.id} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6"><div className="flex items-start justify-between gap-3"><div><Status value={g.status}/><h2 className="mt-3 font-serif text-xl font-semibold">{g.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{g.client_name||'Tanpa nama klien'}</p></div><span className="text-xs text-[var(--muted)]">{g.photos?.length||0} foto</span></div><p className="mt-5 border-t border-[var(--line)] pt-4 text-xs text-[var(--muted)]">Dipilih: <strong className="text-[var(--text)]">{g.selection?.total_selected||0} / {g.max_selection||'∞'}</strong></p><div className="mt-4 flex gap-2"><Link href={`/g/${g.slug}`} className="btn-secondary flex-1 px-3 py-2 text-xs">Lihat</Link><button onClick={()=>copyLink(g.slug)} className="btn-primary flex-1 px-3 py-2 text-xs">{copied===g.slug?<Check className="h-3 w-3"/>:<Copy className="h-3 w-3"/>}{copied===g.slug?'Tersalin':'Salin Link'}</button></div></article>)}{!galleries.length&&<div className="md:col-span-2 lg:col-span-3"><Empty text="Belum ada galeri. Buat galeri dari booking yang sudah dikonfirmasi."/></div>}</div>}</main>{showCreate&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><form onSubmit={createGallery} className="w-full max-w-lg rounded-2xl bg-[var(--surface)] p-6 shadow-2xl"><div className="flex items-center justify-between"><h2 className="font-serif text-2xl">Buat galeri pilihan</h2><button type="button" onClick={()=>setShowCreate(false)}><X className="h-5 w-5"/></button></div><div className="mt-6 space-y-4"><Field label="Hubungkan ke booking"><select value={form.booking_id} onChange={e=>{const booking=bookings.find(b=>b.id===Number(e.target.value));setForm({...form,booking_id:e.target.value,title:booking?`Foto Wisuda — ${booking.full_name}`:form.title,client_name:booking?.full_name||form.client_name,max_selection:0})}} className="field"><option value="">Tanpa booking</option>{bookings.filter(b=>b.status==='confirmed').map(b=><option key={b.id} value={b.id}>{b.full_name} · {b.package.name}</option>)}</select></Field><Field label="Judul galeri"><input required value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className="field"/></Field><Field label="Nama klien"><input value={form.client_name} onChange={e=>setForm({...form,client_name:e.target.value})} className="field"/></Field><Field label="Link folder Google Drive publik"><input required value={form.drive_url} onChange={e=>setForm({...form,drive_url:e.target.value})} className="field" placeholder="https://drive.google.com/drive/folders/..."/></Field><Field label="Kuota pilihan (0 = mengikuti paket / tanpa batas)"><input min="0" type="number" value={form.max_selection} onChange={e=>setForm({...form,max_selection:Number(e.target.value)})} className="field"/></Field></div><button className="btn-primary mt-6 w-full px-5 py-3.5">Simpan & Muat Foto</button></form></div>}<style jsx global>{`.field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.75rem;font-size:.875rem;outline:none}.field:focus{border-color:var(--gold)}`}</style></div>;
 }
+
+function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="block"><span className="mb-2 block text-xs font-bold">{label}</span>{children}</label>}
+function Status({value}:{value:string}){const good=['verified','confirmed','submitted'].includes(value);return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${good?'bg-emerald-100 text-emerald-800':'bg-amber-100 text-amber-800'}`}>{value.replaceAll('_',' ')}</span>}
+function Empty({text}:{text:string}){return <div className="p-12 text-center text-sm text-[var(--muted)]">{text}</div>}

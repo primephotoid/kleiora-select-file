@@ -4,18 +4,33 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"net/http"
+	"errors"
+	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
+	"net/mail"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	"pilihin-backend/internal/config"
-	"pilihin-backend/internal/models"
-	"pilihin-backend/internal/services"
+	"kleiora-backend/internal/config"
+	"kleiora-backend/internal/models"
+	"kleiora-backend/internal/services"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+)
+
+const slotCapacity int64 = 2
+
+var (
+	hourPattern     = regexp.MustCompile(`^(0[6-9]|1[0-9])$`)
+	whatsAppPattern = regexp.MustCompile(`^[0-9+][0-9 -]{7,19}$`)
 )
 
 type Handler struct {
@@ -25,248 +40,403 @@ type Handler struct {
 }
 
 func NewHandler(db *gorm.DB, cfg *config.Config, driveService *services.DriveService) *Handler {
-	return &Handler{
-		db:           db,
-		cfg:          cfg,
-		driveService: driveService,
-	}
+	return &Handler{db: db, cfg: cfg, driveService: driveService}
 }
 
-// GenerateRandomSlug creates a unique 8-char slug for galleries
-func generateRandomSlug() string {
-	b := make([]byte, 4)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+func randomToken(bytes int) (string, error) {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
-// DemoParseDrive parses a Google Drive link and returns photos for instant preview
-func (h *Handler) DemoParseDrive(c *gin.Context) {
-	var req models.DriveFolderParseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Drive URL is required"})
-		return
+func apiError(c *fiber.Ctx, status int, message string) error {
+	return c.Status(status).JSON(fiber.Map{"error": message})
+}
+
+func (h *Handler) AuthRequired(c *fiber.Ctx) error {
+	header := c.Get(fiber.HeaderAuthorization)
+	if !strings.HasPrefix(header, "Bearer ") {
+		return apiError(c, fiber.StatusUnauthorized, "Authentication required")
 	}
 
-	folderID, err := h.driveService.ExtractFolderID(req.DriveURL)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Google Drive folder link format"})
-		return
-	}
-
-	photos, err := h.driveService.FetchPhotosFromFolder(c.Request.Context(), folderID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch photos from Google Drive"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"folder_id":   folderID,
-		"total_photos": len(photos),
-		"photos":      photos,
+	token, err := jwt.Parse(strings.TrimPrefix(header, "Bearer "), func(token *jwt.Token) (any, error) {
+		if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(h.cfg.JWTSecret), nil
 	})
+	if err != nil || !token.Valid {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid or expired token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid token claims")
+	}
+	userID, err := claims.GetSubject()
+	if err != nil || userID == "" {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid token subject")
+	}
+	c.Locals("user_id", userID)
+	return c.Next()
 }
 
-// Register creates a new photographer user
-func (h *Handler) Register(c *gin.Context) {
+func (h *Handler) Register(c *fiber.Ctx) error {
+	var userCount int64
+	if err := h.db.Model(&models.User{}).Count(&userCount).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to check studio setup")
+	}
+	if userCount > 0 {
+		return apiError(c, fiber.StatusForbidden, "Studio account has already been initialized")
+	}
 	var req struct {
-		Email      string `json:"email" binding:"required"`
-		Password   string `json:"password" binding:"required"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
 		FullName   string `json:"full_name"`
 		StudioName string `json:"studio_name"`
 	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if err := c.BodyParser(&req); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Invalid request body")
 	}
-
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if _, err := mail.ParseAddress(req.Email); err != nil || len(req.Password) < 8 {
+		return apiError(c, fiber.StatusBadRequest, "Use a valid email and a password of at least 8 characters")
+	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-		return
+		return apiError(c, fiber.StatusInternalServerError, "Failed to secure password")
 	}
-
-	user := models.User{
-		Email:        strings.ToLower(req.Email),
-		PasswordHash: string(hashedPassword),
-		FullName:     req.FullName,
-		StudioName:   req.StudioName,
-		Role:         "photographer",
-	}
-
+	user := models.User{Email: req.Email, PasswordHash: string(hashedPassword), FullName: strings.TrimSpace(req.FullName), StudioName: strings.TrimSpace(req.StudioName), Role: "photographer"}
 	if err := h.db.Create(&user).Error; err != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Email already registered"})
-		return
+		return apiError(c, fiber.StatusConflict, "Email already registered")
 	}
-
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully", "user": user})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully", "user": user})
 }
 
-// Login authenticates a photographer user and returns a JWT token
-func (h *Handler) Login(c *gin.Context) {
-	var req struct {
-		Email    string `json:"email" binding:"required"`
-		Password string `json:"password" binding:"required"`
+func (h *Handler) Login(c *fiber.Ctx) error {
+	var req struct{ Email, Password string }
+	if err := c.BodyParser(&req); err != nil || req.Email == "" || req.Password == "" {
+		return apiError(c, fiber.StatusBadRequest, "Email and password are required")
 	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email and password are required"})
-		return
-	}
-
 	var user models.User
-	if err := h.db.Where("email = ?", strings.ToLower(req.Email)).First(&user).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		return
+	if err := h.db.Where("email = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&user).Error; err != nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid email or password")
 	}
-
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
-		return
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"exp":     time.Now().Add(time.Hour * 72).Unix(),
-	})
-
-	tokenString, err := token.SignedString([]byte(h.cfg.JWTSecret))
+	now := time.Now()
+	claims := jwt.RegisteredClaims{Subject: fmt.Sprint(user.ID), IssuedAt: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)), Issuer: "kleiora-api"}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(h.cfg.JWTSecret))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-		return
+		return apiError(c, fiber.StatusInternalServerError, "Failed to generate token")
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"token": tokenString,
-		"user":  user,
-	})
+	return c.JSON(fiber.Map{"token": token, "user": user})
 }
 
-// CreateGallery creates a new gallery for a photographer
-func (h *Handler) CreateGallery(c *gin.Context) {
-	var req models.CreateGalleryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+func (h *Handler) ListPackages(c *fiber.Ctx) error {
+	var packages []models.Package
+	if err := h.db.Where("is_active = ?", true).Order("price asc").Find(&packages).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to load packages")
 	}
+	return c.JSON(fiber.Map{"packages": packages})
+}
 
+func makassarToday() time.Time {
+	loc, err := time.LoadLocation("Asia/Makassar")
+	if err != nil {
+		loc = time.FixedZone("WITA", 8*60*60)
+	}
+	now := time.Now().In(loc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+}
+
+func validSessionDate(value string) bool {
+	date, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return false
+	}
+	today := makassarToday()
+	return !date.Before(time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC))
+}
+
+func (h *Handler) GetAvailability(c *fiber.Ctx) error {
+	date := c.Query("date")
+	if !validSessionDate(date) {
+		return apiError(c, fiber.StatusBadRequest, "A current or future date in YYYY-MM-DD format is required")
+	}
+	type slot struct {
+		Hour      string `json:"hour"`
+		Remaining int64  `json:"remaining"`
+		Available bool   `json:"available"`
+	}
+	slots := make([]slot, 0, 14)
+	for hour := 6; hour <= 19; hour++ {
+		hourValue := fmt.Sprintf("%02d", hour)
+		var count int64
+		h.db.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", date, hourValue, "cancelled").Count(&count)
+		remaining := slotCapacity - count
+		if remaining < 0 {
+			remaining = 0
+		}
+		slots = append(slots, slot{Hour: hourValue, Remaining: remaining, Available: remaining > 0})
+	}
+	return c.JSON(fiber.Map{"date": date, "timezone": "WITA", "capacity_per_slot": slotCapacity, "slots": slots})
+}
+
+func (h *Handler) CreateBooking(c *fiber.Ctx) error {
+	var req models.CreateBookingRequest
+	if err := c.BodyParser(&req); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+	req.PackageCode = strings.ToLower(strings.TrimSpace(req.PackageCode))
+	req.FullName = strings.TrimSpace(req.FullName)
+	req.CampusName = strings.TrimSpace(req.CampusName)
+	req.WhatsApp = strings.TrimSpace(req.WhatsApp)
+	req.SessionLocation = strings.TrimSpace(req.SessionLocation)
+	if req.PaymentType == "" {
+		req.PaymentType = "full"
+	}
+	if req.FullName == "" || req.CampusName == "" || req.SessionLocation == "" || !whatsAppPattern.MatchString(req.WhatsApp) || !validSessionDate(req.SessionDate) || !hourPattern.MatchString(req.SessionHour) || (req.PaymentType != "full" && req.PaymentType != "dp") {
+		return apiError(c, fiber.StatusBadRequest, "Complete the booking form with valid customer, date, time, and payment data")
+	}
+	var pkg models.Package
+	if err := h.db.Where("code = ? AND is_active = ?", req.PackageCode, true).First(&pkg).Error; err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Selected package is not available")
+	}
+	code, err := randomToken(10)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking code")
+	}
+	amount := pkg.Price
+	if req.PaymentType == "dp" {
+		amount /= 2
+	}
+	booking := models.Booking{Code: strings.ToUpper(code), PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", req.SessionDate, req.SessionHour, "cancelled").Count(&count).Error; err != nil {
+			return err
+		}
+		if count >= slotCapacity {
+			return errors.New("slot_full")
+		}
+		return tx.Create(&booking).Error
+	})
+	if err != nil {
+		if err.Error() == "slot_full" {
+			return apiError(c, fiber.StatusConflict, "The selected session is already full")
+		}
+		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
+	}
+	h.db.Preload("Package").First(&booking, booking.ID)
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking})
+}
+
+func (h *Handler) GetBooking(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Preload("Package").Preload("Gallery").Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	return c.JSON(booking)
+}
+
+func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	file, err := c.FormFile("proof")
+	if err != nil || file.Size > 5*1024*1024 {
+		return apiError(c, fiber.StatusBadRequest, "A JPG or PNG payment proof up to 5 MB is required")
+	}
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		return apiError(c, fiber.StatusBadRequest, "Only JPG and PNG payment proofs are accepted")
+	}
+	opened, err := file.Open()
+	if err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Payment proof cannot be read")
+	}
+	_, format, decodeErr := image.DecodeConfig(opened)
+	_ = opened.Close()
+	if decodeErr != nil || (format != "jpeg" && format != "png") {
+		return apiError(c, fiber.StatusBadRequest, "Payment proof is not a valid JPG or PNG image")
+	}
+	name, err := randomToken(16)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to store payment proof")
+	}
+	if err := os.MkdirAll(h.cfg.UploadDir, 0o750); err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to prepare upload storage")
+	}
+	path := filepath.Join(h.cfg.UploadDir, name+ext)
+	if err := c.SaveFile(file, path); err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to store payment proof")
+	}
+	method := strings.TrimSpace(c.FormValue("payment_method"))
+	if err := h.db.Model(&booking).Updates(map[string]any{"payment_proof_path": path, "payment_method": method, "payment_status": "submitted"}).Error; err != nil {
+		_ = os.Remove(path)
+		return apiError(c, fiber.StatusInternalServerError, "Failed to update payment status")
+	}
+	return c.JSON(fiber.Map{"message": "Payment proof submitted for admin verification", "payment_status": "submitted"})
+}
+
+func (h *Handler) ListBookings(c *fiber.Ctx) error {
+	var bookings []models.Booking
+	query := h.db.Preload("Package").Preload("Gallery").Order("created_at desc")
+	if status := c.Query("status"); status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if err := query.Find(&bookings).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to load bookings")
+	}
+	return c.JSON(fiber.Map{"bookings": bookings})
+}
+
+func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	now := time.Now()
+	if err := h.db.Model(&booking).Updates(map[string]any{"payment_status": "verified", "status": "confirmed", "verified_at": &now}).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to verify payment")
+	}
+	return c.JSON(fiber.Map{"message": "Payment verified and booking confirmed"})
+}
+
+func (h *Handler) DemoParseDrive(c *fiber.Ctx) error {
+	var req models.DriveFolderParseRequest
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.DriveURL) == "" {
+		return apiError(c, fiber.StatusBadRequest, "Drive URL is required")
+	}
 	folderID, err := h.driveService.ExtractFolderID(req.DriveURL)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Drive URL"})
-		return
+		return apiError(c, fiber.StatusBadRequest, "Invalid Google Drive folder link format")
 	}
-
-	photos, err := h.driveService.FetchPhotosFromFolder(c.Request.Context(), folderID)
+	photos, err := h.driveService.FetchPhotosFromFolder(c.UserContext(), folderID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load photos from Drive"})
-		return
+		return apiError(c, fiber.StatusBadGateway, "Failed to fetch photos from Google Drive")
 	}
+	return c.JSON(fiber.Map{"folder_id": folderID, "total_photos": len(photos), "photos": photos})
+}
 
-	slug := generateRandomSlug()
-	gallery := models.Gallery{
-		Slug:           slug,
-		PhotographerID: 1, // Default or extracted from Auth context
-		DriveFolderID:  folderID,
-		Title:          req.Title,
-		ClientName:     req.ClientName,
-		ClientEmail:    req.ClientEmail,
-		MaxSelection:   req.MaxSelection,
-		Status:         "active",
-		Photos:         photos,
+func (h *Handler) CreateGallery(c *fiber.Ctx) error {
+	var req models.CreateGalleryRequest
+	if err := c.BodyParser(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+		return apiError(c, fiber.StatusBadRequest, "Title and Drive URL are required")
 	}
-
+	folderID, err := h.driveService.ExtractFolderID(req.DriveURL)
+	if err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Invalid Drive URL")
+	}
+	photos, err := h.driveService.FetchPhotosFromFolder(c.UserContext(), folderID)
+	if err != nil {
+		return apiError(c, fiber.StatusBadGateway, "Failed to load photos from Drive")
+	}
+	userID := c.Locals("user_id").(string)
+	var photographerID uint
+	if _, err := fmt.Sscan(userID, &photographerID); err != nil {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid user")
+	}
+	if req.BookingID != nil {
+		var booking models.Booking
+		if err := h.db.Preload("Package").First(&booking, *req.BookingID).Error; err != nil {
+			return apiError(c, fiber.StatusBadRequest, "Booking not found")
+		}
+		if req.MaxSelection == 0 {
+			req.MaxSelection = booking.Package.EditedPhotos
+		}
+	}
+	slug, err := randomToken(12)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to create gallery link")
+	}
+	gallery := models.Gallery{Slug: slug, PhotographerID: photographerID, BookingID: req.BookingID, DriveFolderID: folderID, Title: strings.TrimSpace(req.Title), ClientName: strings.TrimSpace(req.ClientName), ClientEmail: strings.TrimSpace(req.ClientEmail), MaxSelection: req.MaxSelection, Status: "active", Photos: photos}
 	if err := h.db.Create(&gallery).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save gallery"})
-		return
+		return apiError(c, fiber.StatusInternalServerError, "Failed to save gallery")
 	}
-
-	c.JSON(http.StatusCreated, gallery)
+	return c.Status(fiber.StatusCreated).JSON(gallery)
 }
 
-// GetGalleryBySlug returns a gallery and its photos for client viewing & selection
-func (h *Handler) GetGalleryBySlug(c *gin.Context) {
-	slug := c.Param("slug")
+func (h *Handler) ListGalleries(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
+	var galleries []models.Gallery
+	if err := h.db.Preload("Photos").Preload("Selection").Where("photographer_id = ?", userID).Order("created_at desc").Find(&galleries).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to load galleries")
+	}
+	return c.JSON(fiber.Map{"galleries": galleries})
+}
+
+func (h *Handler) GetGalleryBySlug(c *fiber.Ctx) error {
 	var gallery models.Gallery
-
-	if err := h.db.Preload("Photos").Preload("Selection").Where("slug = ?", slug).First(&gallery).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Gallery not found"})
-		return
+	if err := h.db.Preload("Photos").Preload("Selection").Where("slug = ?", c.Params("slug")).First(&gallery).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Gallery not found")
 	}
-
-	c.JSON(http.StatusOK, gallery)
+	return c.JSON(fiber.Map{"slug": gallery.Slug, "title": gallery.Title, "client_name": gallery.ClientName, "max_selection": gallery.MaxSelection, "status": gallery.Status, "expires_at": gallery.ExpiresAt, "photos": gallery.Photos, "selection": gallery.Selection})
 }
 
-// SubmitSelection records client's selected photos
-func (h *Handler) SubmitSelection(c *gin.Context) {
-	slug := c.Param("slug")
+func (h *Handler) SubmitSelection(c *fiber.Ctx) error {
 	var req models.SubmitSelectionRequest
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Selected files list is required"})
-		return
+	if err := c.BodyParser(&req); err != nil || len(req.SelectedFiles) == 0 {
+		return apiError(c, fiber.StatusBadRequest, "Select at least one photo")
 	}
-
 	var gallery models.Gallery
-	if err := h.db.Where("slug = ?", slug).First(&gallery).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Gallery not found"})
-		return
+	if err := h.db.Preload("Photos").Where("slug = ?", c.Params("slug")).First(&gallery).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Gallery not found")
 	}
-
-	jsonBytes, _ := json.Marshal(req.SelectedFiles)
-
-	selection := models.Selection{
-		GalleryID:     gallery.ID,
-		SelectedFiles: string(jsonBytes),
-		TotalSelected: len(req.SelectedFiles),
-		ClientNotes:   req.ClientNotes,
-		SubmittedAt:   time.Now(),
+	if gallery.Status == "archived" || (gallery.ExpiresAt != nil && gallery.ExpiresAt.Before(time.Now())) {
+		return apiError(c, fiber.StatusConflict, "Gallery is no longer accepting selections")
 	}
-
-	// Update selection or create
-	if err := h.db.Where("gallery_id = ?", gallery.ID).Assign(selection).FirstOrCreate(&selection).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save selection"})
-		return
+	if gallery.MaxSelection > 0 && len(req.SelectedFiles) > gallery.MaxSelection {
+		return apiError(c, fiber.StatusBadRequest, fmt.Sprintf("Maximum selection is %d photos", gallery.MaxSelection))
 	}
-
-	// Update gallery status
-	h.db.Model(&gallery).Update("status", "submitted")
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "Selection submitted successfully",
-		"selection": selection,
+	allowed := make(map[string]string, len(gallery.Photos)*2)
+	for _, photo := range gallery.Photos {
+		allowed[photo.DriveFileID] = photo.FileName
+		allowed[photo.FileName] = photo.FileName
+	}
+	seen := make(map[string]bool, len(req.SelectedFiles))
+	files := make([]string, 0, len(req.SelectedFiles))
+	for _, value := range req.SelectedFiles {
+		name, ok := allowed[value]
+		if !ok {
+			return apiError(c, fiber.StatusBadRequest, "Selection contains a photo outside this gallery")
+		}
+		if !seen[name] {
+			seen[name] = true
+			files = append(files, name)
+		}
+	}
+	jsonBytes, err := json.Marshal(files)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to encode selection")
+	}
+	selection := models.Selection{GalleryID: gallery.ID, SelectedFiles: string(jsonBytes), TotalSelected: len(files), ClientNotes: strings.TrimSpace(req.ClientNotes), SubmittedAt: time.Now()}
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("gallery_id = ?", gallery.ID).Assign(selection).FirstOrCreate(&selection).Error; err != nil {
+			return err
+		}
+		return tx.Model(&gallery).Update("status", "submitted").Error
 	})
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to save selection")
+	}
+	return c.JSON(fiber.Map{"message": "Selection submitted successfully", "selection": selection})
 }
 
-// ExportSelection returns selected photos in plain text format for easy copy to Lightroom / Explorer
-func (h *Handler) ExportSelection(c *gin.Context) {
-	slug := c.Param("slug")
+func (h *Handler) ExportSelection(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
 	var gallery models.Gallery
-
-	if err := h.db.Preload("Selection").Where("slug = ?", slug).First(&gallery).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Gallery not found"})
-		return
+	if err := h.db.Preload("Selection").Where("slug = ? AND photographer_id = ?", c.Params("slug"), userID).First(&gallery).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Gallery not found")
 	}
-
 	if gallery.Selection == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No selections have been submitted for this gallery yet"})
-		return
+		return apiError(c, fiber.StatusBadRequest, "No selection has been submitted")
 	}
-
 	var files []string
-	json.Unmarshal([]byte(gallery.Selection.SelectedFiles), &files)
-
-	commaSeparated := strings.Join(files, ", ")
-	lineSeparated := strings.Join(files, "\n")
-
-	c.JSON(http.StatusOK, gin.H{
-		"title":           gallery.Title,
-		"client_name":     gallery.ClientName,
-		"total_selected":  gallery.Selection.TotalSelected,
-		"submitted_at":    gallery.Selection.SubmittedAt,
-		"comma_separated": commaSeparated,
-		"line_separated":  lineSeparated,
-		"file_list":       files,
-		"client_notes":    gallery.Selection.ClientNotes,
-	})
+	if err := json.Unmarshal([]byte(gallery.Selection.SelectedFiles), &files); err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Stored selection is invalid")
+	}
+	return c.JSON(fiber.Map{"title": gallery.Title, "client_name": gallery.ClientName, "total_selected": gallery.Selection.TotalSelected, "submitted_at": gallery.Selection.SubmittedAt, "comma_separated": strings.Join(files, ", "), "line_separated": strings.Join(files, "\n"), "file_list": files, "client_notes": gallery.Selection.ClientNotes})
 }

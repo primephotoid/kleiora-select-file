@@ -2,8 +2,8 @@ import './globals.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Kleiora Grads — Pilih Foto Kamu Sekarang',
-  description: 'Buat galeri dari Google Drive, bagikan linknya, klien memilih sendiri — hasilnya langsung rapi dan siap kamu proses.',
+	title: 'Kleiora Grads — Booking Foto Wisuda Makassar',
+	description: 'Booking sesi foto wisuda Kleiora Grads dan pilih hasil foto favoritmu dalam satu tempat.',
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" data-theme="dark">
+    <html lang="id" data-theme="light">
       <body>{children}</body>
     </html>
   );
