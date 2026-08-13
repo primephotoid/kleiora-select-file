@@ -7,6 +7,8 @@ export interface PackageItem {
   description: string;
   price: number;
   duration_hours: number;
+  duration_label?: string;
+
   location_count: number;
   edited_photos: number;
   includes_print?: string;

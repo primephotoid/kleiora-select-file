@@ -23,9 +23,17 @@ import (
 
 func seedPackages(db *gorm.DB) error {
 	packages := []models.Package{
-		{Code: "personal", Name: "Personal Package", Description: "Sesi personal yang ringkas dan fokus pada wisudawan.", Price: 400000, DurationHours: 1, LocationCount: 1, EditedPhotos: 20, ImagePath: "/images/package-basic.jpg", IsActive: true},
-		{Code: "family", Name: "Family Package", Description: "Sesi lebih panjang untuk wisudawan bersama keluarga.", Price: 500000, DurationHours: 2, LocationCount: 2, EditedPhotos: 40, IncludesPrint: "1 cetak foto 10R", ImagePath: "/images/package-standard.jpg", IsActive: true},
-		{Code: "premium", Name: "Premium Package", Description: "Dokumentasi lengkap dengan lebih banyak lokasi dan video teaser.", Price: 1250000, DurationHours: 3, LocationCount: 3, EditedPhotos: 60, IncludesPrint: "2 cetak foto 10R", IncludesTeaser: true, ImagePath: "/images/package-premium.jpg", IsActive: true},
+		{Code: "personal", Name: "Personal Package", Description: "1 Wisudawan beserta keluarga.", Price: 400000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 30, ImagePath: "/images/package-basic.jpg", IsActive: true},
+		{Code: "couple-gold", Name: "Couple Package Gold", Description: "1 Wisudawan dan partner.", Price: 450000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 35, ImagePath: "/images/package-standard.jpg", IsActive: true},
+		{Code: "couple-platinum", Name: "Couple Package Platinum", Description: "2 Wisudawan dan partner.", Price: 600000, DurationHours: 1, DurationLabel: "1 jam 30 menit", LocationCount: 1, EditedPhotos: 50, ImagePath: "/images/package-standard.jpg", IsActive: true},
+		{Code: "group-gold", Name: "Group Package Gold", Description: "3 Wisudawan.", Price: 700000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 35, ImagePath: "/images/package-premium.jpg", IsActive: true},
+		{Code: "group-platinum", Name: "Group Package Platinum", Description: "5 Wisudawan.", Price: 1250000, DurationHours: 2, DurationLabel: "2 jam", LocationCount: 1, EditedPhotos: 45, ImagePath: "/images/package-premium.jpg", IsActive: true},
+		{Code: "group-diamond", Name: "Group Package Diamond", Description: "10 Wisudawan.", Price: 2000000, DurationHours: 3, DurationLabel: "3 jam", LocationCount: 1, EditedPhotos: 60, ImagePath: "/images/package-premium.jpg", IsActive: true},
+	}
+	// Deactivate old packages no longer in use
+	oldCodes := []string{"family", "premium"}
+	if err := db.Model(&models.Package{}).Where("code IN ?", oldCodes).Update("is_active", false).Error; err != nil {
+		return err
 	}
 	for _, pkg := range packages {
 		var existing models.Package
@@ -114,6 +122,23 @@ func main() {
 	api.Post("/demo/parse-drive", h.DemoParseDrive)
 	api.Get("/galleries/:slug", h.GetGalleryBySlug)
 	api.Post("/galleries/:slug/select", h.SubmitSelection)
+
+	// Test endpoint: kirim pesan Telegram untuk verifikasi konfigurasi
+	api.Get("/test-telegram", func(c *fiber.Ctx) error {
+		testBooking := models.Booking{
+			Code:            "TEST-001",
+			FullName:        "Test User",
+			CampusName:      "Universitas Test",
+			WhatsApp:        "08100000000",
+			SessionDate:     "2026-09-01",
+			SessionHour:     "10",
+			SessionLocation: "Lokasi Test",
+			PaymentType:     "full",
+			AmountDue:       400000,
+		}
+		go services.SendTelegramBookingNotification(testBooking, "Personal Package [TEST]")
+		return c.JSON(fiber.Map{"message": "Test Telegram dikirim! Cek HP Anda. Jika tidak ada pesan, cek TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID di .env"})
+	})
 
 	studio := api.Group("/studio", h.AdminRequired)
 	studio.Get("/bookings", h.ListBookings)

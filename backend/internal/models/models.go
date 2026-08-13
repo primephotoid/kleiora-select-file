@@ -39,6 +39,7 @@ type Package struct {
 	Description    string    `json:"description"`
 	Price          int64     `gorm:"not null" json:"price"`
 	DurationHours  int       `gorm:"not null;default:1" json:"duration_hours"`
+	DurationLabel  string    `json:"duration_label,omitempty"`
 	LocationCount  int       `gorm:"not null;default:1" json:"location_count"`
 	EditedPhotos   int       `gorm:"not null;default:20" json:"edited_photos"`
 	IncludesPrint  string    `json:"includes_print,omitempty"`

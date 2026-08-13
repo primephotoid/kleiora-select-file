@@ -274,6 +274,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
 	}
 	h.db.Preload("Package").First(&booking, booking.ID)
+	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking})
 }
 
