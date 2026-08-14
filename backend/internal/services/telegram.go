@@ -35,7 +35,7 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 			"*Kampus:* %s\n"+
 			"*WhatsApp:* %s\n"+
 			"*Paket:* %s\n"+
-			"*Tgl Sesi:* %s\n"+
+			"*Tanggal Foto:* %s\n"+
 			"*Jam Sesi:* %s:00 WITA\n"+
 			"*Lokasi:* %s\n"+
 			"*Tipe Bayar:* %s\n"+

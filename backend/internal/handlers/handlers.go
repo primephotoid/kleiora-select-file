@@ -51,6 +51,40 @@ func randomToken(bytes int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func generateBookingCode(db *gorm.DB, sessionDate string, packageCode string) (string, error) {
+	// sessionDate is expected to be YYYY-MM-DD
+	parts := strings.Split(sessionDate, "-")
+	dateStr := "000000"
+	if len(parts) == 3 {
+		year := parts[0]
+		if len(year) == 4 {
+			year = year[2:]
+		}
+		dateStr = parts[2] + parts[1] + year
+	}
+
+	prefix := "PKG"
+	lowerCode := strings.ToLower(packageCode)
+	if strings.Contains(lowerCode, "personal") {
+		prefix = "PRSNL"
+	} else if strings.Contains(lowerCode, "couple") {
+		prefix = "CPL"
+	} else if strings.Contains(lowerCode, "group") {
+		prefix = "GRP"
+	}
+
+	// Hitung jumlah booking yang sudah ada pada tanggal sesi tersebut untuk urutan
+	var count int64
+	if err := db.Model(&models.Booking{}).Where("session_date = ?", sessionDate).Count(&count).Error; err != nil {
+		return "", err
+	}
+	
+	// Jika terjadi bentrok (race condition), tambahkan 1
+	seq := count + 1
+	code := fmt.Sprintf("KLR-%s-%s-%03d", prefix, dateStr, seq)
+	return code, nil
+}
+
 func apiError(c *fiber.Ctx, status int, message string) error {
 	return c.Status(status).JSON(fiber.Map{"error": message})
 }
@@ -248,9 +282,9 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if err := h.db.Where("code = ? AND is_active = ?", req.PackageCode, true).First(&pkg).Error; err != nil {
 		return apiError(c, fiber.StatusBadRequest, "Paket yang dipilih tidak tersedia")
 	}
-	code, err := randomToken(10)
+	code, err := generateBookingCode(h.db, req.SessionDate, req.PackageCode)
 	if err != nil {
-		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking code")
+		return apiError(c, fiber.StatusInternalServerError, "Failed to generate booking code")
 	}
 	amount := pkg.Price
 	if req.PaymentType == "dp" {
