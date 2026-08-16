@@ -9,6 +9,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"log"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -52,7 +53,6 @@ func randomToken(bytes int) (string, error) {
 }
 
 func generateBookingCode(db *gorm.DB, sessionDate string, packageCode string) (string, error) {
-	// sessionDate is expected to be YYYY-MM-DD
 	parts := strings.Split(sessionDate, "-")
 	dateStr := "000000"
 	if len(parts) == 3 {
@@ -73,14 +73,23 @@ func generateBookingCode(db *gorm.DB, sessionDate string, packageCode string) (s
 		prefix = "GRP"
 	}
 
-	// Hitung jumlah booking yang sudah ada pada tanggal sesi tersebut untuk urutan
-	var count int64
-	if err := db.Model(&models.Booking{}).Where("session_date = ?", sessionDate).Count(&count).Error; err != nil {
-		return "", err
+	var lastBooking models.Booking
+	var seq int64 = 1
+
+	if err := db.Model(&models.Booking{}).Where("session_date = ?", sessionDate).Order("id DESC").First(&lastBooking).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return "", err
+		}
+	} else {
+		// Example Code: KLR-PRSNL-160826-003
+		partsCode := strings.Split(lastBooking.Code, "-")
+		if len(partsCode) >= 4 {
+			if lastSeq, err := strconv.ParseInt(partsCode[3], 10, 64); err == nil {
+				seq = lastSeq + 1
+			}
+		}
 	}
-	
-	// Jika terjadi bentrok (race condition), tambahkan 1
-	seq := count + 1
+
 	code := fmt.Sprintf("KLR-%s-%s-%03d", prefix, dateStr, seq)
 	return code, nil
 }
@@ -363,14 +372,47 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 
 func (h *Handler) ListBookings(c *fiber.Ctx) error {
 	var bookings []models.Booking
-	query := h.db.Preload("Package").Preload("Gallery").Order("created_at desc")
+	query := h.db.Preload("Package").Preload("Gallery").Preload("Gallery.Selection").Order("created_at desc")
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", status)
 	}
 	if err := query.Find(&bookings).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to load bookings")
 	}
+
+	for i := range bookings {
+		b := &bookings[i]
+
+		var gal models.Gallery
+		if err := h.db.Preload("Selection").Where("booking_id = ? OR (client_name != '' AND (LOWER(client_name) = LOWER(?) OR LOWER(?) LIKE LOWER(CONCAT('%', client_name, '%')))) OR (title != '' AND LOWER(title) LIKE LOWER(CONCAT('%', ?, '%')))", b.ID, b.FullName, b.FullName, b.FullName).Order("created_at desc").First(&gal).Error; err == nil {
+			b.Gallery = &gal
+			if gal.BookingID == nil {
+				h.db.Model(&gal).Update("booking_id", b.ID)
+			}
+		}
+
+		if (b.Gallery != nil && (b.Gallery.Status == "submitted" || b.Gallery.Selection != nil)) || b.Status == "completed" {
+			b.Status = "completed"
+			b.PaymentStatus = "verified"
+			h.db.Model(&models.Booking{}).Where("id = ?", b.ID).Updates(map[string]any{
+				"status":         "completed",
+				"payment_status": "verified",
+			})
+		}
+	}
+
 	return c.JSON(fiber.Map{"bookings": bookings})
+}
+
+func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
+	}
+	if err := h.db.Model(&booking).Updates(map[string]any{"status": "completed", "payment_status": "verified"}).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal memperbarui status booking")
+	}
+	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai", "booking": booking})
 }
 
 func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
@@ -402,6 +444,7 @@ func (h *Handler) ViewPaymentProof(c *fiber.Ctx) error {
 	}
 	return c.SendFile(absolutePath)
 }
+
 
 func (h *Handler) DemoParseDrive(c *fiber.Ctx) error {
 	var req models.DriveFolderParseRequest
@@ -471,6 +514,14 @@ func (h *Handler) GetGalleryBySlug(c *fiber.Ctx) error {
 	if err := h.db.Preload("Photos").Preload("Selection").Where("slug = ?", c.Params("slug")).First(&gallery).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Gallery not found")
 	}
+
+	// Start 30-day timer if not started yet
+	if gallery.ExpiresAt == nil {
+		expiresAt := time.Now().Add(30 * 24 * time.Hour)
+		gallery.ExpiresAt = &expiresAt
+		h.db.Model(&gallery).Update("expires_at", expiresAt)
+	}
+
 	return c.JSON(fiber.Map{"slug": gallery.Slug, "title": gallery.Title, "client_name": gallery.ClientName, "max_selection": gallery.MaxSelection, "status": gallery.Status, "expires_at": gallery.ExpiresAt, "photos": gallery.Photos, "selection": gallery.Selection})
 }
 
@@ -515,11 +566,51 @@ func (h *Handler) SubmitSelection(c *fiber.Ctx) error {
 		if err := tx.Where("gallery_id = ?", gallery.ID).Assign(selection).FirstOrCreate(&selection).Error; err != nil {
 			return err
 		}
-		return tx.Model(&gallery).Update("status", "submitted").Error
+		// Update status galeri menjadi 'submitted'
+		if err := tx.Model(&models.Gallery{}).Where("id = ?", gallery.ID).Update("status", "submitted").Error; err != nil {
+			return err
+		}
+
+		// Otomatis tandai booking terkait sebagai terverifikasi & selesai
+		if gallery.BookingID != nil && *gallery.BookingID > 0 {
+			tx.Model(&models.Booking{}).Where("id = ?", *gallery.BookingID).Updates(map[string]interface{}{
+				"status":         "completed",
+				"payment_status": "verified",
+			})
+		}
+		if gallery.ClientName != "" {
+			cName := strings.TrimSpace(gallery.ClientName)
+			tx.Model(&models.Booking{}).Where("LOWER(full_name) = LOWER(?) OR LOWER(full_name) LIKE LOWER(?)", cName, "%"+cName+"%").Updates(map[string]interface{}{
+				"status":         "completed",
+				"payment_status": "verified",
+			})
+		}
+		return nil
 	})
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to save selection")
 	}
+
+	// Ambil nomor WhatsApp klien untuk notifikasi Telegram
+	wa := ""
+	var booking models.Booking
+	if gallery.BookingID != nil {
+		if err := h.db.Where("id = ?", *gallery.BookingID).First(&booking).Error; err == nil && booking.WhatsApp != "" {
+			wa = booking.WhatsApp
+		}
+	}
+	if wa == "" && gallery.ClientName != "" {
+		if err := h.db.Where("LOWER(full_name) = LOWER(?) OR LOWER(?) LIKE LOWER(CONCAT('%', full_name, '%')) OR LOWER(full_name) LIKE LOWER(CONCAT('%', ?, '%'))", gallery.ClientName, gallery.ClientName, gallery.ClientName).Order("created_at desc").First(&booking).Error; err == nil {
+			wa = booking.WhatsApp
+		}
+	}
+	if wa == "" && gallery.Title != "" {
+		if err := h.db.Where("LOWER(?) LIKE LOWER(CONCAT('%', full_name, '%'))", gallery.Title).Order("created_at desc").First(&booking).Error; err == nil {
+			wa = booking.WhatsApp
+		}
+	}
+	go services.SendTelegramGallerySelectionNotification(gallery, selection, files, wa)
+
 	return c.JSON(fiber.Map{"message": "Selection submitted successfully", "selection": selection})
 }
 
@@ -538,3 +629,65 @@ func (h *Handler) ExportSelection(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{"title": gallery.Title, "client_name": gallery.ClientName, "total_selected": gallery.Selection.TotalSelected, "submitted_at": gallery.Selection.SubmittedAt, "comma_separated": strings.Join(files, ", "), "line_separated": strings.Join(files, "\n"), "file_list": files, "client_notes": gallery.Selection.ClientNotes})
 }
+
+func (h *Handler) DeleteGallery(c *fiber.Ctx) error {
+	id := c.Params("id")
+	// Hapus data anak terlebih dahulu untuk menghindari error foreign key constraint
+	h.db.Where("gallery_id = ?", id).Delete(&models.Selection{})
+	h.db.Where("gallery_id = ?", id).Delete(&models.Photo{})
+	if err := h.db.Unscoped().Where("id = ?", id).Delete(&models.Gallery{}).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to delete gallery")
+	}
+	return c.JSON(fiber.Map{"message": "Gallery deleted successfully"})
+}
+
+func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
+	code := strings.ToUpper(strings.TrimSpace(c.Params("code")))
+
+	var booking models.Booking
+	if err := h.db.Where("code = ?", code).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
+	}
+
+	// Gunakan transaksi dengan mematikan foreign key checks sementara agar dijamin 100% bisa terhapus
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		_ = tx.Exec("SET FOREIGN_KEY_CHECKS=0;").Error
+
+		// Cari semua galeri ID yang berhubungan
+		var galleryIDs []uint
+		tx.Table("galleries").Where("booking_id = ? OR (client_name != '' AND LOWER(client_name) = LOWER(?)) OR (title != '' AND LOWER(title) LIKE LOWER(CONCAT('%', ?, '%')))", booking.ID, booking.FullName, booking.FullName).Pluck("id", &galleryIDs)
+
+		if len(galleryIDs) > 0 {
+			tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Selection{})
+			tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Photo{})
+			tx.Where("id IN ?", galleryIDs).Delete(&models.Gallery{})
+		}
+
+		// Putuskan booking_id di tabel galleries jika masih ada
+		tx.Exec("UPDATE galleries SET booking_id = NULL WHERE booking_id = ?", booking.ID)
+
+		// Hapus booking
+		if err := tx.Unscoped().Where("id = ?", booking.ID).Delete(&models.Booking{}).Error; err != nil {
+			return err
+		}
+
+		_ = tx.Exec("SET FOREIGN_KEY_CHECKS=1;").Error
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Gagal menghapus booking %s: %v", code, err)
+		return apiError(c, fiber.StatusInternalServerError, fmt.Sprintf("Gagal menghapus booking: %v", err))
+	}
+
+	// Hapus file bukti pembayaran dari disk jika ada
+	if booking.PaymentProofPath != "" {
+		_ = os.Remove(booking.PaymentProofPath)
+	}
+
+	return c.JSON(fiber.Map{"message": "Booking berhasil dihapus"})
+}
+
+
+
+

@@ -6,17 +6,17 @@ import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
-  ShieldCheck, UserRound, WalletCards, X,
+  ShieldCheck, Trash, UserRound, WalletCards, X,
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah } from '@/lib/api';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
-  status: string; booking_id?: number; photos?: object[]; selection?: { total_selected: number };
+  status: string; booking_id?: number; photos?: { drive_file_id: string }[]; selection?: { total_selected: number };
 }
 
 type DashboardTab = 'bookings' | 'galleries';
-type BookingFilter = 'all' | 'needs_action' | 'confirmed';
+type BookingFilter = 'all' | 'needs_action' | 'confirmed' | 'completed';
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
 
@@ -68,17 +68,28 @@ export default function DashboardPage() {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stats = useMemo(() => ({
-    total: bookings.length,
-    needsAction: bookings.filter(item => item.payment_status === 'submitted').length,
-    confirmed: bookings.filter(item => item.status === 'confirmed').length,
-    activeGalleries: galleries.filter(item => item.status !== 'archived').length,
-  }), [bookings, galleries]);
+  const isGalleryActive = (g: GalleryItem) => g.status === 'active' && (!g.selection || !g.selection.total_selected);
+
+  const stats = useMemo(() => {
+    const completedCount = bookings.filter(item => item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection).length;
+    const confirmedCount = bookings.filter(item => (item.status === 'confirmed' || item.payment_status === 'verified') && !(item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection)).length;
+    return {
+      total: bookings.length,
+      needsAction: bookings.filter(item => item.payment_status === 'submitted' && item.status !== 'completed').length,
+      confirmed: confirmedCount,
+      completed: completedCount,
+      activeGalleries: galleries.filter(isGalleryActive).length,
+    };
+  }, [bookings, galleries]);
 
   const filteredBookings = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return bookings.filter(item => {
-      const matchesFilter = filter === 'all' || (filter === 'needs_action' && item.payment_status === 'submitted') || (filter === 'confirmed' && item.status === 'confirmed');
+      const isCompleted = item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection;
+      const matchesFilter = filter === 'all' ||
+        (filter === 'needs_action' && item.payment_status === 'submitted' && !isCompleted) ||
+        (filter === 'confirmed' && (item.status === 'confirmed' || item.payment_status === 'verified') && !isCompleted) ||
+        (filter === 'completed' && isCompleted);
       const matchesSearch = !keyword || [item.full_name, item.code, item.whatsapp, item.campus_name, item.package.name].some(value => value?.toLowerCase().includes(keyword));
       return matchesFilter && matchesSearch;
     });
@@ -115,6 +126,33 @@ export default function DashboardPage() {
     finally { setCreating(false); }
   }
 
+  async function deleteGallery(id: number) {
+    if (!confirm('Apakah Anda yakin ingin menghapus galeri ini? Semua data pilihan akan ikut terhapus.')) return;
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/galleries/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Galeri gagal dihapus.'); setRefreshing(false); }
+  }
+
+  async function deleteBooking(code: string) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus booking ${code}? Tindakan ini tidak dapat dibatalkan.`)) return;
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/bookings/${code}`, { method: 'DELETE', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Booking gagal dihapus.'); setRefreshing(false); }
+  }
+
+  async function markComplete(code: string) {
+    setProcessing(code); setError('');
+    try {
+      await apiRequest(`/studio/bookings/${code}/complete`, { method: 'PATCH', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui status booking.'); }
+    finally { setProcessing(''); }
+  }
+
   async function logout() {
     try { await apiRequest('/auth/logout', { method: 'POST' }); } catch { /* tetap bersihkan sesi lokal */ }
     localStorage.removeItem('kleiora_token'); localStorage.removeItem('kleiora_user'); router.replace('/studio/login'); router.refresh();
@@ -129,9 +167,9 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#f7f6f2]">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link href="/" className="font-serif text-2xl font-semibold">Kleiora<span className="text-[var(--gold)]">.studio</span></Link>
+          <Link href="/" className="font-serif text-2xl font-semibold">Kleiora<span className="text-[var(--gold)]">.grads</span></Link>
           <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block"><p className="text-xs font-bold">{adminName}</p><p className="text-[10px] text-[var(--muted)]">Administrator studio</p></div>
+            <div className="hidden text-right sm:block"><p className="text-xs font-bold">Admin Kleiora.grads</p><p className="text-[10px] text-[var(--muted)]">Administrator studio</p></div>
             <button onClick={logout} className="btn-secondary px-4 py-2.5 text-xs"><LogOut className="h-4 w-4" />Keluar</button>
           </div>
         </div>
@@ -139,34 +177,35 @@ export default function DashboardPage() {
 
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
         <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
-          <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Dashboard studio</p><h1 className="mt-2 font-serif text-4xl font-medium sm:text-5xl">Selamat bekerja, {adminName.split(' ')[0]}</h1><p className="mt-3 max-w-xl text-sm text-[var(--muted)]">Pantau booking, periksa pembayaran, lalu bagikan galeri foto kepada klien.</p></div>
+          <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Dashboard studio</p><h1 className="mt-2 font-serif text-4xl font-medium sm:text-5xl">Selamat bekerja, Admin Kleiora.grads</h1><p className="mt-3 max-w-xl text-sm text-[var(--muted)]">Pantau booking, periksa pembayaran, lalu bagikan galeri foto kepada klien.</p></div>
           <button onClick={() => setShowCreate(true)} className="btn-primary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Galeri</button>
         </section>
 
         {error && <div role="alert" className="mt-6 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><span>{error}</span><button onClick={() => setError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
 
-        <section className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat icon={<ReceiptText />} label="Total booking" value={stats.total} />
           <Stat icon={<Clock3 />} label="Perlu diperiksa" value={stats.needsAction} emphasis={stats.needsAction > 0} />
-          <Stat icon={<ShieldCheck />} label="Terkonfirmasi" value={stats.confirmed} />
+          <Stat icon={<ShieldCheck />} label="Terverifikasi" value={stats.confirmed} />
+          <Stat icon={<CheckCircle2 />} label="Selesai" value={stats.completed} />
           <Stat icon={<Images />} label="Galeri aktif" value={stats.activeGalleries} />
         </section>
 
         <div className="mt-8 flex gap-1 rounded-2xl border border-[var(--line)] bg-white p-1.5 sm:w-fit">
           <TabButton active={tab === 'bookings'} onClick={() => setTab('bookings')} icon={<ReceiptText />} label={`Booking (${bookings.length})`} />
-          <TabButton active={tab === 'galleries'} onClick={() => setTab('galleries')} icon={<Images />} label={`Galeri (${galleries.length})`} />
+          <TabButton active={tab === 'galleries'} onClick={() => setTab('galleries')} icon={<Images />} label={`Galeri (${galleries.filter(isGalleryActive).length})`} />
         </div>
 
         {loading ? <DashboardSkeleton /> : tab === 'bookings' ? (
           <section className="mt-5">
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative flex-1 sm:max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={event => setSearch(event.target.value)} className="w-full rounded-xl bg-[var(--surface2)] py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-[var(--gold)]" placeholder="Cari nama, kode, WhatsApp..." /></div>
-              <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0"><FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Semua</FilterButton><FilterButton active={filter === 'needs_action'} onClick={() => setFilter('needs_action')}>Perlu diperiksa</FilterButton><FilterButton active={filter === 'confirmed'} onClick={() => setFilter('confirmed')}>Terkonfirmasi</FilterButton><button onClick={() => load(true)} disabled={refreshing} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Muat ulang'}</button></div>
+              <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0"><FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Semua</FilterButton><FilterButton active={filter === 'needs_action'} onClick={() => setFilter('needs_action')}>Perlu diperiksa</FilterButton><FilterButton active={filter === 'confirmed'} onClick={() => setFilter('confirmed')}>Terverifikasi</FilterButton><FilterButton active={filter === 'completed'} onClick={() => setFilter('completed')}>Selesai</FilterButton><button onClick={() => load(true)} disabled={refreshing} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Muat ulang'}</button></div>
             </div>
-            <div className="mt-4 space-y-3">{filteredBookings.map(item => <BookingCard key={item.id} item={item} processing={processing} onVerify={verify} onViewProof={viewProof} onCreateGallery={() => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }} />)}{!filteredBookings.length && <Empty icon={<Search />} title="Booking tidak ditemukan" text="Coba ubah kata pencarian atau filter status." />}</div>
+            <div className="mt-4 space-y-3">{filteredBookings.map(item => <BookingCard key={item.id} item={item} processing={processing} onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete} onCreateGallery={() => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }} />)}{!filteredBookings.length && <Empty icon={<Search />} title="Booking tidak ditemukan" text="Coba ubah kata pencarian atau filter status." />}</div>
           </section>
         ) : (
-          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} />)}{!galleries.length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
+          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryActive).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} />)}{!galleries.filter(isGalleryActive).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
         )}
       </main>
 
@@ -176,14 +215,18 @@ export default function DashboardPage() {
   );
 }
 
-function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void }) {
+function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
-  return <article className="rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:border-[#d4c4ac] hover:shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.3fr_1fr_1fr_auto] lg:items-center"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{item.full_name}</h2><Status value={item.payment_status} /></div><p className="mt-1 text-xs text-[var(--muted)]">{item.campus_name} · <span className="font-mono">{item.code}</span></p><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><MessageCircle className="h-3.5 w-3.5" />{item.whatsapp}</a></div><div className="space-y-2 text-sm"><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]" />{formatDate(item.session_date)} · {item.session_hour}.00</p><p className="flex items-center gap-2 text-xs text-[var(--muted)]"><MapPin className="h-3.5 w-3.5" />{item.session_location}</p></div><div><p className="text-sm font-semibold">{item.package.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : 'Lunas'} · {formatRupiah(item.amount_due)}</p></div><div className="flex flex-wrap gap-2 lg:w-44 lg:flex-col">{item.payment_status === 'submitted' && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs">{processing === `proof-${item.code}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing === item.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Verifikasi</button></>}{item.status === 'confirmed' && <button onClick={onCreateGallery} className="btn-secondary flex-1 px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button>}{item.payment_status === 'pending' && <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span>}</div></div></article>;
+  const hasGallery = !!item.gallery;
+  const isCompleted = item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection;
+
+  return <article className="rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:border-[#d4c4ac] hover:shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.3fr_1fr_1fr_auto] lg:items-center"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{item.full_name}</h2><Status value={isCompleted ? 'completed' : item.payment_status} /></div><p className="mt-1 text-xs text-[var(--muted)]">{item.campus_name} · <span className="font-mono">{item.code}</span></p><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><MessageCircle className="h-3.5 w-3.5" />{item.whatsapp}</a></div><div className="space-y-2 text-sm"><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]" />{formatDate(item.session_date)} · {item.session_hour}.00</p><p className="flex items-center gap-2 text-xs text-[var(--muted)]"><MapPin className="h-3.5 w-3.5" />{item.session_location}</p></div><div><p className="text-sm font-semibold">{item.package.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : 'Lunas'} · {formatRupiah(item.amount_due)}</p></div><div className="flex flex-wrap gap-2 lg:w-44 lg:flex-col">{item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs">{processing === `proof-${item.code}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing === item.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Verifikasi</button></>}{isCompleted ? <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Selesai (Pilihan terkirim)</span> : hasGallery ? <><span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 border border-blue-200"><Images className="h-3.5 w-3.5" />Galeri dibuat</span><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs text-emerald-700 border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Tandai selesai</button></> : item.status === 'confirmed' ? <button onClick={onCreateGallery} className="btn-secondary flex-1 px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button> : item.payment_status === 'pending' ? <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span> : null}<button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button></div></div></article>;
 }
 
-function GalleryCard({ gallery, copied, onCopy }: { gallery: GalleryItem; copied: boolean; onCopy: () => void }) {
+function GalleryCard({ gallery, copied, onCopy, onDelete }: { gallery: GalleryItem; copied: boolean; onCopy: () => void; onDelete: () => void }) {
   const count = gallery.photos?.length || 0; const selected = gallery.selection?.total_selected || 0;
-  return <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white"><div className="flex h-28 items-center justify-center bg-[var(--surface2)]"><Images className="h-8 w-8 text-[var(--gold-dark)]" /></div><div className="p-5"><div className="flex items-start justify-between gap-3"><div><Status value={gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div><div className="mt-5"><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--muted)]">Pilihan klien</span><strong>{selected} / {gallery.max_selection || '∞'}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface2)]"><div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${gallery.max_selection ? Math.min(100, selected / gallery.max_selection * 100) : 0}%` }} /></div></div><div className="mt-5 flex gap-2"><Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link><button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button></div></div></article>;
+  const photo = gallery.photos && gallery.photos.length > 0 ? gallery.photos[0] : null;
+  return <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative"><button onClick={onDelete} className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Galeri"><Trash className="h-4 w-4" /></button><div className="flex h-28 items-center justify-center bg-[var(--surface2)] overflow-hidden">{photo ? <img src={`https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.drive_file_id)}=w600`} alt="Thumbnail" className="h-full w-full object-cover" /> : <Images className="h-8 w-8 text-[var(--gold-dark)]" />}</div><div className="p-5"><div className="flex items-start justify-between gap-3"><div><Status value={gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div><div className="mt-5"><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--muted)]">Pilihan klien</span><strong>{selected} / {gallery.max_selection || '∞'}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface2)]"><div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${gallery.max_selection ? Math.min(100, selected / gallery.max_selection * 100) : 0}%` }} /></div></div><div className="mt-5 flex gap-2"><Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link><button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button></div></div></article>;
 }
 
 function CreateGalleryModal({ form, setForm, bookings, creating, onClose, onSubmit }: { form: typeof emptyGalleryForm; setForm: React.Dispatch<React.SetStateAction<typeof emptyGalleryForm>>; bookings: BookingItem[]; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
@@ -194,7 +237,7 @@ function Stat({ icon, label, value, emphasis = false }: { icon: React.ReactNode;
 function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) { return <button onClick={onClick} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold sm:flex-none ${active ? 'bg-[var(--text)] text-white' : 'text-[var(--muted)] hover:bg-[var(--surface2)]'} [&>svg]:h-4 [&>svg]:w-4`}>{icon}{label}</button>; }
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) { return <button onClick={onClick} className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-bold ${active ? 'bg-[var(--gold-glow)] text-[var(--gold-dark)]' : 'text-[var(--muted)] hover:bg-[var(--surface2)]'}`}>{children}</button>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-xs font-bold">{label}</span>{children}</label>; }
-function Status({ value }: { value: string }) { const styles: Record<string, string> = { verified: 'bg-emerald-100 text-emerald-800', confirmed: 'bg-emerald-100 text-emerald-800', submitted: 'bg-blue-100 text-blue-800', active: 'bg-emerald-100 text-emerald-800', pending: 'bg-amber-100 text-amber-800', pending_payment: 'bg-amber-100 text-amber-800', archived: 'bg-slate-100 text-slate-700' }; const labels: Record<string, string> = { verified: 'Terverifikasi', confirmed: 'Terkonfirmasi', submitted: 'Perlu diperiksa', active: 'Aktif', pending: 'Menunggu bukti', pending_payment: 'Menunggu pembayaran', archived: 'Diarsipkan' }; return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${styles[value] || 'bg-slate-100 text-slate-700'}`}>{labels[value] || value.replaceAll('_', ' ')}</span>; }
+function Status({ value }: { value: string }) { const styles: Record<string, string> = { verified: 'bg-emerald-100 text-emerald-800', confirmed: 'bg-emerald-100 text-emerald-800', completed: 'bg-emerald-100 text-emerald-800', submitted: 'bg-blue-100 text-blue-800', active: 'bg-emerald-100 text-emerald-800', pending: 'bg-amber-100 text-amber-800', pending_payment: 'bg-amber-100 text-amber-800', archived: 'bg-slate-100 text-slate-700' }; const labels: Record<string, string> = { verified: 'Terverifikasi', confirmed: 'Terkonfirmasi', completed: 'Selesai', submitted: 'Perlu diperiksa', active: 'Aktif', pending: 'Menunggu bukti', pending_payment: 'Menunggu pembayaran', archived: 'Diarsipkan' }; return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${styles[value] || 'bg-slate-100 text-slate-700'}`}>{labels[value] || value.replaceAll('_', ' ')}</span>; }
 function Empty({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white p-12 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface2)] text-[var(--gold-dark)] [&>svg]:h-5 [&>svg]:w-5">{icon}</div><h3 className="mt-4 font-bold">{title}</h3><p className="mt-1 text-xs text-[var(--muted)]">{text}</p></div>; }
 function DashboardSkeleton() { return <div className="mt-5 space-y-3">{[1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl border border-[var(--line)] bg-white" />)}</div>; }
 function formatDate(value: string) { const date = new Date(`${value}T00:00:00`); return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }

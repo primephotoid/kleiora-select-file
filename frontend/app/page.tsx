@@ -8,6 +8,7 @@ const packages = [
   { code: 'personal', name: 'Personal Package', price: 400000, image: '/images/package-basic.jpg', popular: false, features: ['1 jam sesi foto', '1 lokasi', '20 foto edited', 'Semua soft file'] },
   { code: 'family', name: 'Family Package', price: 500000, image: '/images/package-standard.jpg', popular: true, features: ['2 jam sesi foto', '2 lokasi', '40 foto edited', 'Semua soft file', '1 cetak foto 10R'] },
   { code: 'premium', name: 'Premium Package', price: 1250000, image: '/images/package-premium.jpg', popular: false, features: ['3 jam sesi foto', '3 lokasi', '60 foto edited', 'Semua soft file', '2 cetak foto 10R', 'Video teaser 30 detik'] },
+  { code: 'cinematic', name: 'Cinematic Package', price: 1000000, image: '/images/package-premium.jpg', popular: false, features: ['1 jam take', 'Include edit', '1x free revisi edit', 'Hasil durasi menyesuaikan'] },
 ];
 
 export default function HomePage() {
@@ -35,9 +36,10 @@ export default function HomePage() {
                 Lihat Paket & Harga <ArrowRight className="h-4 w-4" />
               </Link>
               
-              <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[11px] font-bold text-gray-600">
+              <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-[11px] font-bold text-gray-600 uppercase">
                 <span className="flex items-center gap-2"><CalendarCheck className="h-4 w-4 text-[var(--gold-dark)]" /> Jadwal tersimpan online</span>
                 <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[var(--gold-dark)]" /> Pembayaran diverifikasi admin</span>
+                <span className="flex items-center gap-2"><Images className="h-4 w-4 text-[var(--gold-dark)]" /> Memilih hasil foto tanpa ribet</span>
               </div>
             </div>
 

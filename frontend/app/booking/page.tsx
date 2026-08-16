@@ -33,6 +33,7 @@ function BookingFlow() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState('');
   const [timeLeft, setTimeLeft] = useState(30 * 60);
+  const [sessionTimestamp, setSessionTimestamp] = useState(Date.now());
 
   const [mounted, setMounted] = useState(false);
 
@@ -42,12 +43,19 @@ function BookingFlow() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.step && parsed.step < 4) {
+        const now = Date.now();
+        const oneHour = 60 * 60 * 1000;
+
+        if (parsed.timestamp && now - parsed.timestamp > oneHour) {
+          localStorage.removeItem('kleiora_booking_state');
+          // Sesi kadaluarsa setelah 1 jam, otomatis terulang dari awal
+        } else if (parsed.step && parsed.step < 4) {
           setStep(parsed.step);
           setSelectedCode(parsed.selectedCode || '');
           if (parsed.form) setForm(parsed.form);
           setPaymentMethod(parsed.paymentMethod || '');
           setTimeLeft(parsed.timeLeft || 30 * 60);
+          if (parsed.timestamp) setSessionTimestamp(parsed.timestamp);
         }
       } catch (e) {
         console.error('Gagal memuat data booking:', e);
@@ -61,12 +69,12 @@ function BookingFlow() {
     if (!mounted) return;
     if (step < 4) {
       localStorage.setItem('kleiora_booking_state', JSON.stringify({
-        step, selectedCode, form, paymentMethod, timeLeft
+        step, selectedCode, form, paymentMethod, timeLeft, timestamp: sessionTimestamp
       }));
     } else {
       localStorage.removeItem('kleiora_booking_state');
     }
-  }, [step, selectedCode, form, paymentMethod, timeLeft, mounted]);
+  }, [step, selectedCode, form, paymentMethod, timeLeft, sessionTimestamp, mounted]);
 
   useEffect(() => {
     if (step !== 3) return;
@@ -111,8 +119,14 @@ function BookingFlow() {
   useEffect(() => {
     apiRequest<{ packages: PackageItem[] }>('/packages')
       .then(data => {
-        setPackages(data.packages);
-        if (!selectedCode && data.packages[0]) setSelectedCode(data.packages[0].code);
+        const pkgs = [...data.packages];
+        const cinematicIndex = pkgs.findIndex(pkg => pkg.code === 'cinematic');
+        if (cinematicIndex !== -1) {
+          const [cinematicPkg] = pkgs.splice(cinematicIndex, 1);
+          pkgs.push(cinematicPkg);
+        }
+        setPackages(pkgs);
+        if (!selectedCode && pkgs[0]) setSelectedCode(pkgs[0].code);
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
@@ -199,10 +213,10 @@ function BookingFlow() {
                       <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(pkg.price)}</p>
                       <p className="mt-4 text-sm leading-6 text-[var(--muted)]">{pkg.description}</p>
                       <div className="mt-5 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
-                        <span>{pkg.duration_label || `${pkg.duration_hours} jam`}</span>
-                        <span>{pkg.location_count} lokasi</span>
-                        <span>{pkg.edited_photos} foto edited</span>
-                        <span>Semua soft file</span>
+                        <span>{pkg.code === 'cinematic' ? '1 jam take' : (pkg.duration_label || `${pkg.duration_hours} jam sesi foto`)}</span>
+                        <span>{pkg.code === 'cinematic' ? 'Include edit' : `${pkg.location_count} lokasi`}</span>
+                        <span>{pkg.code === 'cinematic' ? '1x free revisi edit' : (pkg.edited_photos > 0 ? `${pkg.edited_photos} foto edited` : '1x free revisi edit')}</span>
+                        <span>{pkg.includes_print || (pkg.code === 'cinematic' ? 'Hasil durasi menyesuaikan' : 'Semua soft file')}</span>
                       </div>
                       <button
                         onClick={() => { setSelectedCode(pkg.code); setStep(2); window.scrollTo({ top: 0, behavior: 'smooth' }); }}

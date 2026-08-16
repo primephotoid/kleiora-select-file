@@ -27,6 +27,7 @@ func seedPackages(db *gorm.DB) error {
 		{Code: "couple-gold", Name: "Couple Package Gold", Description: "1 Wisudawan dan partner.", Price: 450000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 35, ImagePath: "/images/package-standard.jpg", IsActive: true},
 		{Code: "couple-platinum", Name: "Couple Package Platinum", Description: "2 Wisudawan dan partner.", Price: 600000, DurationHours: 1, DurationLabel: "1 jam 30 menit", LocationCount: 1, EditedPhotos: 50, ImagePath: "/images/package-standard.jpg", IsActive: true},
 		{Code: "group-gold", Name: "Group Package Gold", Description: "3 Wisudawan.", Price: 700000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 35, ImagePath: "/images/package-premium.jpg", IsActive: true},
+		{Code: "cinematic", Name: "Cinematic Package", Description: "1 Wisudawan + keluarga dan teman.", Price: 1000000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 0, ImagePath: "/images/package-premium.jpg", IsActive: true},
 		{Code: "group-platinum", Name: "Group Package Platinum", Description: "5 Wisudawan.", Price: 1250000, DurationHours: 2, DurationLabel: "2 jam", LocationCount: 1, EditedPhotos: 45, ImagePath: "/images/package-premium.jpg", IsActive: true},
 		{Code: "group-diamond", Name: "Group Package Diamond", Description: "10 Wisudawan.", Price: 2000000, DurationHours: 3, DurationLabel: "3 jam", LocationCount: 1, EditedPhotos: 60, ImagePath: "/images/package-premium.jpg", IsActive: true},
 	}
@@ -102,7 +103,7 @@ func main() {
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PATCH,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization", AllowCredentials: true}))
+	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PATCH,DELETE,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization", AllowCredentials: true}))
 	app.Use(limiter.New(limiter.Config{Max: 120, Expiration: time.Minute, LimitReached: func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Too many requests"})
 	}}))
@@ -143,10 +144,33 @@ func main() {
 	studio := api.Group("/studio", h.AdminRequired)
 	studio.Get("/bookings", h.ListBookings)
 	studio.Patch("/bookings/:code/verify-payment", h.VerifyBookingPayment)
+	studio.Patch("/bookings/:code/complete", h.CompleteBooking)
 	studio.Get("/bookings/:code/payment-proof", h.ViewPaymentProof)
+	studio.Delete("/bookings/:code", h.DeleteBooking)
 	studio.Get("/galleries", h.ListGalleries)
 	studio.Post("/galleries", h.CreateGallery)
+	studio.Delete("/galleries/:id", h.DeleteGallery)
 	studio.Get("/galleries/:slug/export", h.ExportSelection)
+
+	// Start background task for 1-year automated reset
+	go func() {
+		for {
+			var firstBooking models.Booking
+			if err := db.Order("created_at ASC").First(&firstBooking).Error; err == nil {
+				// If first booking exists, check if 1 year has passed (365 days)
+				if time.Since(firstBooking.CreatedAt).Hours() >= 24*365 {
+					log.Println("1 year has passed since the first booking! Performing automated database reset...")
+					db.Exec("DELETE FROM selections")
+					db.Exec("DELETE FROM photos")
+					db.Exec("DELETE FROM galleries")
+					db.Exec("DELETE FROM bookings")
+					log.Println("Automated database reset completed.")
+				}
+			}
+			// Check again in 24 hours
+			time.Sleep(24 * time.Hour)
+		}
+	}()
 
 	log.Printf("Starting Kleiora Fiber API on port :%s", cfg.Port)
 	if err := app.Listen(fmt.Sprintf(":%s", cfg.Port)); err != nil {

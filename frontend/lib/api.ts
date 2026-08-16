@@ -34,6 +34,7 @@ export interface BookingItem {
   payment_method?: string;
   notes?: string;
   created_at?: string;
+  gallery?: { id: number; slug: string; title: string; status: string; selection?: { total_selected: number } };
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
