@@ -382,15 +382,27 @@ function BookingFlow() {
                       <h3 className="mb-4 font-bold">Detail Rekening Transfer Bank</h3>
                       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
                         <div className="mb-4">
-                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK MANDIRI</p>
-                          <p className="mt-1 text-xl font-bold">123-00-0987654-3</p>
-                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>PT Kleiora Wisuda Abadi</strong></p>
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK BCA</p>
+                          <p className="mt-1 text-xl font-bold">7685839920</p>
+                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div className="mb-4">
-                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK BCA</p>
-                          <p className="mt-1 text-xl font-bold">829-012-3456</p>
-                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>PT Kleiora Wisuda Abadi</strong></p>
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK BRI</p>
+                          <p className="mt-1 text-xl font-bold">205301004823538</p>
+                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
+                        </div>
+                        <hr className="my-4 border-[var(--line)]" />
+                        <div className="mb-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK MANDIRI</p>
+                          <p className="mt-1 text-xl font-bold">1520033239431</p>
+                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
+                        </div>
+                        <hr className="my-4 border-[var(--line)]" />
+                        <div className="mb-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">SEABANK</p>
+                          <p className="mt-1 text-xl font-bold">901773152340</p>
+                          <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div>
@@ -422,14 +434,20 @@ function BookingFlow() {
                       <h3 className="mb-4 font-bold">Detail Pembayaran E-Wallet</h3>
                       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
                         <div className="mb-4">
-                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Nomor E-Wallet (OVO / DANA / ShopeePay / GoPay)</p>
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">DANA / ShopeePay</p>
                           <p className="mt-1 text-2xl font-bold">085757746494</p>
-                          <p className="mt-1 text-xs text-[var(--muted)]">Atas Nama: <strong>Kleiora Grads</strong></p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
+                        </div>
+                        <hr className="my-4 border-[var(--line)]" />
+                        <div className="mb-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">OVO</p>
+                          <p className="mt-1 text-2xl font-bold">085752528300</p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">PETUNJUK</p>
-                          <p className="mt-1 text-sm text-[var(--muted)]">Transfer saldo sesuai nominal paket terpilih ke nomor di atas. Simpan screenshot/bukti pembayaran untuk diunggah di bawah ini.</p>
+                          <p className="mt-1 text-sm text-[var(--muted)]">Transfer saldo sesuai nominal paket terpilih ke salah satu nomor di atas. Simpan screenshot/bukti pembayaran untuk diunggah di bawah ini.</p>
                         </div>
                       </div>
                     </>

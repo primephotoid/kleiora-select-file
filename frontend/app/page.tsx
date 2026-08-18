@@ -5,10 +5,11 @@ import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { formatRupiah } from '@/lib/api';
 
 const packages = [
-  { code: 'personal', name: 'Personal Package', price: 400000, image: '/images/package-basic.jpg', popular: false, features: ['1 jam sesi foto', '1 lokasi', '20 foto edited', 'Semua soft file'] },
-  { code: 'family', name: 'Family Package', price: 500000, image: '/images/package-standard.jpg', popular: true, features: ['2 jam sesi foto', '2 lokasi', '40 foto edited', 'Semua soft file', '1 cetak foto 10R'] },
+  { code: 'personal-gold', name: 'Personal Package Gold', price: 300000, image: '/images/package-basic.jpg', popular: false, features: ['1 Wisudawan + Keluarga Maks. 3 Orang', '30 menit', '1 lokasi', '20 foto edited', 'Semua soft file'] },
+  { code: 'personal-platinum', name: 'Personal Package Platinum', price: 400000, image: '/images/package-basic.jpg', popular: true, features: ['1 Wisudawan + Keluarga Maks. 5 Orang', '1 jam', '1 lokasi', '30 foto edited', 'Semua soft file'] },
+  { code: 'family', name: 'Family Package', price: 450000, image: '/images/package-standard.jpg', popular: false, features: ['1 Wisudawan + Keluarga Sampai 15 Orang', '1 jam', '1 lokasi', '35 foto edited', 'Semua soft file'] },
   { code: 'premium', name: 'Premium Package', price: 1250000, image: '/images/package-premium.jpg', popular: false, features: ['3 jam sesi foto', '3 lokasi', '60 foto edited', 'Semua soft file', '2 cetak foto 10R', 'Video teaser 30 detik'] },
-  { code: 'cinematic', name: 'Cinematic Package', price: 1000000, image: '/images/package-premium.jpg', popular: false, features: ['1 jam take', 'Include edit', '1x free revisi edit', 'Hasil durasi menyesuaikan'] },
+  { code: 'cinematic', name: 'Cinematic Package', price: 800000, image: '/images/package-premium.jpg', popular: false, features: ['1 jam take', 'Include edit', '1x free revisi edit', 'Hasil durasi menyesuaikan'] },
 ];
 
 export default function HomePage() {

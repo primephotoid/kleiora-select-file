@@ -51,8 +51,8 @@ export function SiteFooter() {
           <p className="mt-2 text-sm text-[var(--muted)]">Let&apos;s make your graduation moment unforgettable.</p>
         </div>
         <div className="text-sm text-[var(--muted)] sm:text-right">
-          <p>Makassar, Indonesia · WITA</p>
-          <p className="mt-2">© 2026 Kleiora Grads · <Link href="/studio/login" className="hover:text-[var(--text)]">Studio</Link></p>
+          <p>Makassar, Indonesia</p>
+          <p className="mt-2">© 2026 Kleiora Grads x <Link href="/studio/login" className="hover:text-[var(--text)]">Prime photo.id</Link></p>
         </div>
       </div>
     </footer>
