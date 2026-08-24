@@ -1,0 +1,149 @@
+name: CI/CD Kleiora
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: kleiora-production
+  cancel-in-progress: false
+
+env:
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+  FRONTEND_PORT: ${{ vars.FRONTEND_PORT || '4601' }}
+  BACKEND_PORT: ${{ vars.BACKEND_PORT || '4600' }}
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate deployment configuration
+        run: |
+          test -n "$NEXT_PUBLIC_API_URL" || { echo "Repository variable NEXT_PUBLIC_API_URL is required" >&2; exit 1; }
+          test -n "$FRONTEND_ORIGIN" || { echo "Repository variable FRONTEND_ORIGIN is required" >&2; exit 1; }
+
+      - name: Setup Node.js (Frontend)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Setup Go (Backend)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Download Backend dependencies
+        working-directory: backend
+        run: go mod download
+
+      - name: Test Backend
+        working-directory: backend
+        run: go test ./...
+
+      - name: Build Backend
+        working-directory: backend
+        run: go build -v ./cmd/server
+
+  build-and-push-images:
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          platforms: linux/amd64
+          tags: ${{ secrets.DOCKER_USERNAME }}/kleiora_frontend:latest
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          platforms: linux/amd64
+          tags: ${{ secrets.DOCKER_USERNAME }}/kleiora_backend:latest
+
+  deploy:
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -eu
+
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+            docker pull "${{ secrets.DOCKER_USERNAME }}/kleiora_frontend:latest"
+            docker pull "${{ secrets.DOCKER_USERNAME }}/kleiora_backend:latest"
+
+            mkdir -p /opt/kleiora/uploads
+            chown -R 10001:10001 /opt/kleiora/uploads
+
+            docker rm -f kleiora_frontend kleiora_backend 2>/dev/null || true
+
+            docker run -d \
+              --name kleiora_backend \
+              --restart unless-stopped \
+              -p "${{ env.BACKEND_PORT }}:8080" \
+              -v /opt/kleiora/uploads:/app/uploads \
+              -e PORT="8080" \
+              -e APP_ENV="production" \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+              -e GOOGLE_DRIVE_API_KEY="${{ secrets.GOOGLE_DRIVE_API_KEY }}" \
+              -e FRONTEND_ORIGIN="${{ env.FRONTEND_ORIGIN }}" \
+              -e UPLOAD_DIR="uploads" \
+              -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
+              -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
+              "${{ secrets.DOCKER_USERNAME }}/kleiora_backend:latest"
+
+            docker run -d \
+              --name kleiora_frontend \
+              --restart unless-stopped \
+              -p "${{ env.FRONTEND_PORT }}:3000" \
+              "${{ secrets.DOCKER_USERNAME }}/kleiora_frontend:latest"
+
+            docker image prune -f

@@ -1,0 +1,10 @@
+.env
+.air.toml
+*.db
+*.db-shm
+*.db-wal
+database
+tmp
+cmd/server/tmp
+uploads
+Dockerfile
