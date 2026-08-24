@@ -1,4 +1,11 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
+const getApiBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    return `http://${window.location.hostname}:4000/api/v1`;
+  }
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080/api/v1';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export interface PackageItem {
   id: number;
