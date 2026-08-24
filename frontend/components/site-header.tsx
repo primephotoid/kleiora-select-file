@@ -52,7 +52,7 @@ export function SiteFooter() {
         </div>
         <div className="text-sm text-[var(--muted)] sm:text-right">
           <p>Makassar, Indonesia</p>
-          <p className="mt-2">© 2026 Kleiora Grads x <Link href="/studio/login" className="hover:text-[var(--text)]">Prime photo.id</Link></p>
+          <p className="mt-2">© 2026 Kleiora.grads x <Link href="/studio/login" className="hover:text-[var(--text)]">Primephoto.id</Link></p>
         </div>
       </div>
     </footer>
