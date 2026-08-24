@@ -285,7 +285,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if !hourPattern.MatchString(req.SessionHour) {
 		return apiError(c, fiber.StatusBadRequest, "Pilih jam sesi yang valid")
 	}
-	if req.PaymentType != "full" && req.PaymentType != "dp" {
+	if req.PaymentType != "full" && req.PaymentType != "dp" && req.PaymentType != "dp_custom" {
 		return apiError(c, fiber.StatusBadRequest, "Pilihan pembayaran tidak valid")
 	}
 	var pkg models.Package
@@ -299,6 +299,14 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	amount := pkg.Price
 	if req.PaymentType == "dp" {
 		amount /= 2
+	} else if req.PaymentType == "dp_custom" {
+		if req.CustomDPAmount < 50000 {
+			return apiError(c, fiber.StatusBadRequest, "Nominal DP custom minimal Rp50.000")
+		}
+		if req.CustomDPAmount > pkg.Price {
+			return apiError(c, fiber.StatusBadRequest, "Nominal DP custom tidak boleh melebihi harga paket")
+		}
+		amount = req.CustomDPAmount
 	}
 	booking := models.Booking{Code: strings.ToUpper(code), PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
 	err = h.db.Transaction(func(tx *gorm.DB) error {
@@ -687,6 +695,255 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Booking berhasil dihapus"})
+}
+
+func (h *Handler) ListAllPackages(c *fiber.Ctx) error {
+	var packages []models.Package
+	if err := h.db.Order("price asc").Find(&packages).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to load packages")
+	}
+	return c.JSON(fiber.Map{"packages": packages})
+}
+
+func (h *Handler) CreatePackage(c *fiber.Ctx) error {
+	var pkg models.Package
+	if err := c.BodyParser(&pkg); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Data tidak valid")
+	}
+
+	if pkg.Code == "" || pkg.Name == "" || pkg.Price == 0 {
+		return apiError(c, fiber.StatusBadRequest, "Kode, Nama, dan Harga paket harus diisi")
+	}
+
+	if err := h.db.Create(&pkg).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal menyimpan paket: "+err.Error())
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(pkg)
+}
+
+func (h *Handler) UpdatePackage(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var pkg models.Package
+
+	if err := h.db.First(&pkg, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return apiError(c, fiber.StatusNotFound, "Paket tidak ditemukan")
+		}
+		return apiError(c, fiber.StatusInternalServerError, "Gagal mencari paket")
+	}
+
+	var input models.Package
+	if err := c.BodyParser(&input); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Data tidak valid")
+	}
+
+	// Update fields
+	pkg.Name = input.Name
+	pkg.Code = input.Code
+	pkg.Description = input.Description
+	pkg.Price = input.Price
+	pkg.DurationHours = input.DurationHours
+	pkg.DurationLabel = input.DurationLabel
+	pkg.LocationCount = input.LocationCount
+	pkg.EditedPhotos = input.EditedPhotos
+	pkg.IncludesPrint = input.IncludesPrint
+	pkg.IncludesTeaser = input.IncludesTeaser
+	if input.ImagePath != "" {
+		pkg.ImagePath = input.ImagePath
+	}
+	pkg.IsActive = input.IsActive
+
+	if err := h.db.Save(&pkg).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal memperbarui paket: "+err.Error())
+	}
+
+	return c.JSON(pkg)
+}
+
+func (h *Handler) DeletePackage(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var pkg models.Package
+
+	if err := h.db.First(&pkg, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return apiError(c, fiber.StatusNotFound, "Paket tidak ditemukan")
+		}
+		return apiError(c, fiber.StatusInternalServerError, "Gagal mencari paket")
+	}
+
+	// Soft delete or hard delete depending on bookings attached. We'll just hard delete for now if no constraints hit, or deactivate.
+	// Actually, if there are bookings, deleting might fail due to FK constraints. Let's just try to delete, if fails, advise deactivation.
+	if err := h.db.Delete(&pkg).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal menghapus paket. Paket mungkin sedang digunakan oleh booking. Coba nonaktifkan (IsActive = false) paket ini.")
+	}
+
+	return c.JSON(fiber.Map{"message": "Paket berhasil dihapus"})
+}
+
+func (h *Handler) UploadPackageImage(c *fiber.Ctx) error {
+	file, err := c.FormFile("image")
+	if err != nil {
+		return apiError(c, fiber.StatusBadRequest, "File gambar tidak ditemukan")
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+		return apiError(c, fiber.StatusBadRequest, "Format file tidak didukung. Gunakan JPG, PNG, atau WEBP")
+	}
+
+	// Buat folder uploads jika belum ada
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal membuat folder upload")
+	}
+
+	// Generate filename unik
+	randomStr, _ := randomToken(16)
+	filename := fmt.Sprintf("pkg_%s%s", randomStr, ext)
+	filepath := filepath.Join("uploads", filename)
+
+	if err := c.SaveFile(file, filepath); err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal menyimpan file")
+	}
+
+	// Return public path
+	return c.JSON(fiber.Map{
+		"message": "File berhasil diupload",
+		"path":    "/" + filepath, // Asumsikan uploads/ disajikan di root public (e.g. /uploads/...)
+	})
+}
+
+// --- PORTFOLIO MANAGEMENT ---
+
+func (h *Handler) ListActivePortfolios(c *fiber.Ctx) error {
+	var portfolios []models.Portfolio
+	if err := h.db.Where("is_active = ?", true).Order("sort_order ASC, created_at DESC").Find(&portfolios).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch portfolios"})
+	}
+	return c.JSON(fiber.Map{"portfolios": portfolios})
+}
+
+func (h *Handler) ListAllPortfolios(c *fiber.Ctx) error {
+	var portfolios []models.Portfolio
+	if err := h.db.Order("sort_order ASC, created_at DESC").Find(&portfolios).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch portfolios"})
+	}
+	return c.JSON(fiber.Map{"portfolios": portfolios})
+}
+
+func (h *Handler) CreatePortfolio(c *fiber.Ctx) error {
+	var req models.Portfolio
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if err := h.db.Create(&req).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create portfolio"})
+	}
+	return c.Status(201).JSON(req)
+}
+
+func (h *Handler) UpdatePortfolio(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var portfolio models.Portfolio
+	if err := h.db.First(&portfolio, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Portfolio not found"})
+	}
+	var req models.Portfolio
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if err := h.db.Model(&portfolio).Updates(req).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update portfolio"})
+	}
+	return c.JSON(portfolio)
+}
+
+func (h *Handler) DeletePortfolio(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if err := h.db.Delete(&models.Portfolio{}, id).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete portfolio"})
+	}
+	return c.SendStatus(204)
+}
+
+func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
+	file, err := c.FormFile("image")
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Image required"})
+	}
+
+	if file.Size > 5*1024*1024 {
+		return c.Status(400).JSON(fiber.Map{"error": "Ukuran gambar terlalu besar (Maks 5MB)."})
+	}
+
+	dir := "./uploads/portfolios"
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create upload directory"})
+	}
+
+	ext := filepath.Ext(file.Filename)
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	path := filepath.Join(dir, filename)
+
+	if err := c.SaveFile(file, path); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save image"})
+	}
+
+	return c.JSON(fiber.Map{
+		"path":    "/uploads/portfolios/" + filename,
+	})
+}
+
+// --- REVIEW MANAGEMENT ---
+
+func (h *Handler) ListApprovedReviews(c *fiber.Ctx) error {
+	var reviews []models.Review
+	if err := h.db.Where("is_approved = ?", true).Order("created_at DESC").Find(&reviews).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch reviews"})
+	}
+	return c.JSON(fiber.Map{"reviews": reviews})
+}
+
+func (h *Handler) CreateReview(c *fiber.Ctx) error {
+	var req models.Review
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	req.IsApproved = false // Selalu false saat pertama kali dibuat
+	if err := h.db.Create(&req).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create review"})
+	}
+	return c.Status(201).JSON(req)
+}
+
+func (h *Handler) ListAllReviews(c *fiber.Ctx) error {
+	var reviews []models.Review
+	if err := h.db.Order("created_at DESC").Find(&reviews).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch reviews"})
+	}
+	return c.JSON(fiber.Map{"reviews": reviews})
+}
+
+func (h *Handler) ToggleReviewApproval(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var review models.Review
+	if err := h.db.First(&review, id).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Review not found"})
+	}
+	
+	// Toggle the is_approved flag
+	if err := h.db.Model(&review).Update("is_approved", !review.IsApproved).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update review status"})
+	}
+	return c.JSON(review)
+}
+
+func (h *Handler) DeleteReview(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if err := h.db.Delete(&models.Review{}, id).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete review"})
+	}
+	return c.SendStatus(204)
 }
 
 

@@ -75,7 +75,7 @@ func main() {
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping MySQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}); err != nil {
 		log.Fatalf("Failed to run database migration: %v", err)
 	}
 	if err := seedPackages(db); err != nil {
@@ -111,11 +111,15 @@ func main() {
 	app.Get("/ping", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok", "message": "Kleiora Fiber API is running"})
 	})
+	app.Static("/uploads", "./uploads") // Serve static files from uploads folder
 	api := app.Group("/api/v1")
 	api.Post("/auth/register", h.Register)
 	api.Post("/auth/login", h.Login)
 	api.Post("/auth/logout", h.Logout)
 	api.Get("/packages", h.ListPackages)
+	api.Get("/portfolios", h.ListActivePortfolios)
+	api.Get("/reviews", h.ListApprovedReviews)
+	api.Post("/reviews", h.CreateReview)
 	api.Get("/availability", h.GetAvailability)
 	api.Post("/bookings", h.CreateBooking)
 	api.Get("/bookings/:code", h.GetBooking)
@@ -151,6 +155,22 @@ func main() {
 	studio.Post("/galleries", h.CreateGallery)
 	studio.Delete("/galleries/:id", h.DeleteGallery)
 	studio.Get("/galleries/:slug/export", h.ExportSelection)
+
+	studio.Get("/packages", h.ListAllPackages)
+	studio.Post("/packages", h.CreatePackage)
+	studio.Put("/packages/:id", h.UpdatePackage)
+	studio.Delete("/packages/:id", h.DeletePackage)
+	studio.Post("/packages/upload-image", h.UploadPackageImage)
+
+	studio.Get("/portfolios", h.ListAllPortfolios)
+	studio.Post("/portfolios", h.CreatePortfolio)
+	studio.Put("/portfolios/:id", h.UpdatePortfolio)
+	studio.Delete("/portfolios/:id", h.DeletePortfolio)
+	studio.Post("/portfolios/upload-image", h.UploadPortfolioImage)
+
+	studio.Get("/reviews", h.ListAllReviews)
+	studio.Patch("/reviews/:id/approve", h.ToggleReviewApproval)
+	studio.Delete("/reviews/:id", h.DeleteReview)
 
 	// Start background task for 1-year automated reset
 	go func() {

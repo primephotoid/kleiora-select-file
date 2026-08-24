@@ -6,24 +6,29 @@ import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
-  ShieldCheck, Trash, UserRound, WalletCards, X,
+  ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud
 } from 'lucide-react';
-import { API_BASE_URL, apiRequest, BookingItem, formatRupiah } from '@/lib/api';
+import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
   status: string; booking_id?: number; photos?: { drive_file_id: string }[]; selection?: { total_selected: number };
 }
 
-type DashboardTab = 'bookings' | 'galleries';
+type DashboardTab = 'bookings' | 'galleries' | 'packages' | 'portfolios' | 'reviews';
 type BookingFilter = 'all' | 'needs_action' | 'confirmed' | 'completed';
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
+const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true };
+const emptyPortfolioForm = { id: 0, title: '', image_path: '', is_active: true, sort_order: 0 };
 
 export default function DashboardPage() {
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingItem[]>([]);
   const [galleries, setGalleries] = useState<GalleryItem[]>([]);
+  const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [portfolios, setPortfolios] = useState<PortfolioItem[]>([]);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState('');
@@ -33,9 +38,13 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<BookingFilter>('all');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreatePackage, setShowCreatePackage] = useState(false);
   const [copied, setCopied] = useState('');
   const [adminName, setAdminName] = useState('Admin');
   const [form, setForm] = useState(emptyGalleryForm);
+  const [pkgForm, setPkgForm] = useState<PackageItem>(emptyPackageForm as PackageItem);
+  const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>(emptyPortfolioForm as PortfolioItem);
+  const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
 
   function authHeaders() {
     const token = localStorage.getItem('kleiora_token');
@@ -46,12 +55,18 @@ export default function DashboardPage() {
     background ? setRefreshing(true) : setLoading(true);
     setError('');
     try {
-      const [bookingData, galleryData] = await Promise.all([
+      const [bookingData, galleryData, packageData, portfolioData, reviewData] = await Promise.all([
         apiRequest<{ bookings: BookingItem[] }>('/studio/bookings', { headers: authHeaders() }),
         apiRequest<{ galleries: GalleryItem[] }>('/studio/galleries', { headers: authHeaders() }),
+        apiRequest<{ packages: PackageItem[] }>('/studio/packages', { headers: authHeaders() }),
+        apiRequest<{ portfolios: PortfolioItem[] }>('/studio/portfolios', { headers: authHeaders() }),
+        apiRequest<{ reviews: ReviewItem[] }>('/studio/reviews', { headers: authHeaders() }),
       ]);
       setBookings(bookingData.bookings);
       setGalleries(galleryData.galleries);
+      setPackages(packageData.packages);
+      setPortfolios(portfolioData.portfolios);
+      setReviews(reviewData.reviews);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Data studio gagal dimuat.');
     } finally {
@@ -135,6 +150,72 @@ export default function DashboardPage() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Galeri gagal dihapus.'); setRefreshing(false); }
   }
 
+  async function savePackage(event: FormEvent) {
+    event.preventDefault(); setError(''); setCreating(true);
+    try {
+      if (pkgForm.id) {
+        await apiRequest(`/studio/packages/${pkgForm.id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(pkgForm) });
+      } else {
+        await apiRequest('/studio/packages', { method: 'POST', headers: authHeaders(), body: JSON.stringify(pkgForm) });
+      }
+      setShowCreatePackage(false); setPkgForm(emptyPackageForm); await load(true); setTab('packages');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Paket gagal disimpan.'); }
+    finally { setCreating(false); }
+  }
+
+  async function deletePackage(id: number) {
+    if (!confirm('Apakah Anda yakin ingin menghapus paket ini?')) return;
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/packages/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Paket gagal dihapus.'); setRefreshing(false); }
+  }
+
+  async function savePortfolio(event: FormEvent) {
+    event.preventDefault();
+    setCreating(true); setError('');
+    try {
+      if (portfolioForm.id) {
+        await apiRequest(`/studio/portfolios/${portfolioForm.id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(portfolioForm) });
+      } else {
+        const paths = portfolioForm.image_path.split(',');
+        for (const p of paths) {
+          if (!p.trim()) continue;
+          await apiRequest('/studio/portfolios', { method: 'POST', headers: authHeaders(), body: JSON.stringify({...portfolioForm, image_path: p.trim()}) });
+        }
+      }
+      setShowCreatePortfolio(false); setPortfolioForm(emptyPortfolioForm); await load(true); setTab('portfolios');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Portfolio gagal disimpan.'); }
+    finally { setCreating(false); }
+  }
+
+  async function deletePortfolio(id: number) {
+    if (!confirm('Apakah Anda yakin ingin menghapus foto portfolio ini?')) return;
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/portfolios/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Portfolio gagal dihapus.'); setRefreshing(false); }
+  }
+
+  async function toggleReviewApproval(id: number) {
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/reviews/${id}/approve`, { method: 'PATCH', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui ulasan.'); setRefreshing(false); }
+  }
+
+  async function deleteReview(id: number) {
+    if (!confirm('Hapus ulasan ini permanen?')) return;
+    setRefreshing(true); setError('');
+    try {
+      await apiRequest(`/studio/reviews/${id}`, { method: 'DELETE', headers: authHeaders() });
+      await load(true);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal menghapus ulasan.'); setRefreshing(false); }
+  }
+
   async function deleteBooking(code: string) {
     if (!confirm(`Apakah Anda yakin ingin menghapus booking ${code}? Tindakan ini tidak dapat dibatalkan.`)) return;
     setRefreshing(true); setError('');
@@ -178,7 +259,11 @@ export default function DashboardPage() {
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-12">
         <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Dashboard studio</p><h1 className="mt-2 font-serif text-4xl font-medium sm:text-5xl">Selamat bekerja, Admin Kleiora.grads</h1><p className="mt-3 max-w-xl text-sm text-[var(--muted)]">Pantau booking, periksa pembayaran, lalu bagikan galeri foto kepada klien.</p></div>
-          <button onClick={() => setShowCreate(true)} className="btn-primary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Galeri</button>
+          <div className="flex gap-2 w-full sm:w-auto flex-col sm:flex-row">
+            <button onClick={() => { setPortfolioForm(emptyPortfolioForm); setShowCreatePortfolio(true); }} className="btn-secondary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Portofolio</button>
+            <button onClick={() => { setPkgForm(emptyPackageForm); setShowCreatePackage(true); }} className="btn-secondary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Paket</button>
+            <button onClick={() => setShowCreate(true)} className="btn-primary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Galeri</button>
+          </div>
         </section>
 
         {error && <div role="alert" className="mt-6 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><span>{error}</span><button onClick={() => setError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
@@ -191,9 +276,12 @@ export default function DashboardPage() {
           <Stat icon={<Images />} label="Galeri aktif" value={stats.activeGalleries} />
         </section>
 
-        <div className="mt-8 flex gap-1 rounded-2xl border border-[var(--line)] bg-white p-1.5 sm:w-fit">
+        <div className="mt-8 flex gap-1 rounded-2xl border border-[var(--line)] bg-white p-1.5 sm:w-fit flex-wrap">
           <TabButton active={tab === 'bookings'} onClick={() => setTab('bookings')} icon={<ReceiptText />} label={`Booking (${bookings.length})`} />
           <TabButton active={tab === 'galleries'} onClick={() => setTab('galleries')} icon={<Images />} label={`Galeri (${galleries.filter(isGalleryActive).length})`} />
+          <TabButton active={tab === 'packages'} onClick={() => setTab('packages')} icon={<PackageIcon />} label={`Paket (${packages.length})`} />
+          <TabButton active={tab === 'portfolios'} onClick={() => setTab('portfolios')} icon={<Images />} label={`Portofolio (${portfolios.length})`} />
+          <TabButton active={tab === 'reviews'} onClick={() => setTab('reviews')} icon={<MessageCircle />} label={`Ulasan (${reviews.length})`} />
         </div>
 
         {loading ? <DashboardSkeleton /> : tab === 'bookings' ? (
@@ -204,12 +292,54 @@ export default function DashboardPage() {
             </div>
             <div className="mt-4 space-y-3">{filteredBookings.map(item => <BookingCard key={item.id} item={item} processing={processing} onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete} onCreateGallery={() => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }} />)}{!filteredBookings.length && <Empty icon={<Search />} title="Booking tidak ditemukan" text="Coba ubah kata pencarian atau filter status." />}</div>
           </section>
-        ) : (
+        ) : tab === 'galleries' ? (
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryActive).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} />)}{!galleries.filter(isGalleryActive).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
-        )}
+        ) : tab === 'packages' ? (
+          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {packages.map(pkg => (
+              <PackageCard key={pkg.id} pkg={pkg} onEdit={() => { setPkgForm(pkg); setShowCreatePackage(true); }} onDelete={() => deletePackage(pkg.id)} />
+            ))}
+            {!packages.length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<PackageIcon />} title="Belum ada paket" text="Buat paket baru untuk ditampilkan di halaman pemesanan." /></div>}
+          </section>
+        ) : tab === 'portfolios' ? (
+          <section className="mt-5 grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {portfolios.map(p => (
+              <PortfolioCard key={p.id} portfolio={p} onEdit={() => { setPortfolioForm(p); setShowCreatePortfolio(true); }} onDelete={() => deletePortfolio(p.id)} />
+            ))}
+            {!portfolios.length && <div className="sm:col-span-3 lg:grid-cols-4"><Empty icon={<Images />} title="Belum ada portofolio" text="Tambahkan portofolio untuk ditampilkan di halaman utama." /></div>}
+          </section>
+        ) : tab === 'reviews' ? (
+          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {reviews.map(r => (
+              <div key={r.id} className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-white p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-bold">{r.client_name}</h3>
+                    <div className="mt-1 flex text-[var(--gold)]">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <svg key={i} className={`h-4 w-4 ${i < r.rating ? 'fill-current' : 'text-gray-300'}`} viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => toggleReviewApproval(r.id)} className={`flex h-8 items-center rounded-full px-3 text-xs font-bold transition ${r.is_approved ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                      {r.is_approved ? 'Disetujui' : 'Sembunyikan'}
+                    </button>
+                    <button onClick={() => deleteReview(r.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600 transition hover:bg-red-100"><Trash className="h-4 w-4" /></button>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-relaxed text-gray-600">"{r.comment}"</p>
+                <p className="mt-4 text-[10px] text-gray-400">{new Date(r.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              </div>
+            ))}
+            {!reviews.length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<MessageCircle />} title="Belum ada ulasan" text="Ulasan dari klien akan muncul di sini." /></div>}
+          </section>
+        ) : null}
       </main>
 
       {showCreate && <CreateGalleryModal form={form} setForm={setForm} bookings={bookings} creating={creating} onClose={() => !creating && setShowCreate(false)} onSubmit={createGallery} />}
+      {showCreatePackage && <CreatePackageModal form={pkgForm} setForm={setPkgForm} creating={creating} onClose={() => !creating && setShowCreatePackage(false)} onSubmit={savePackage} />}
+      {showCreatePortfolio && <CreatePortfolioModal form={portfolioForm} setForm={setPortfolioForm} creating={creating} onClose={() => !creating && setShowCreatePortfolio(false)} onSubmit={savePortfolio} />}
       <style jsx global>{`.admin-field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.admin-field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}`}</style>
     </div>
   );
@@ -222,14 +352,14 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
 
   const handleSendReceipt = () => {
     const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-    const message = `Halo kak *${item.full_name}*, terima kasih ya! 🙏\n\nPembayaran untuk sesi foto wisuda dengan Kleiora.grads (*Kode: ${item.code}*) sudah kami terima dan verifikasi. ✅\n\n*Detail Sesi:*\n🗓️ Tanggal: ${dateStr}\n⏰ Waktu: ${item.session_hour}.00 WITA\n📍 Lokasi: ${item.session_location}\n📦 Paket: ${item.package.name}\n\nKami tunggu kehadirannya ya kak! Jika ada pertanyaan lebih lanjut, silakan balas pesan ini.`;
+    const message = `Halo kak *${item.full_name}*, terima kasih ya!\n\nPembayaran untuk sesi foto wisuda dengan Kleiora.grads (*Kode: ${item.code}*) sudah kami terima dan verifikasi.\n\n*Detail Sesi:*\n● Tanggal: ${dateStr}\n● Waktu: ${item.session_hour}.00 WITA\n● Lokasi: ${item.session_location}\n● Paket: ${item.package.name}\n\nKami tunggu kehadirannya ya kak! Jika ada pertanyaan lebih lanjut, silakan balas pesan ini.`;
     window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
   const handleSendGallery = () => {
     if (!item.gallery?.slug) return;
-    const driveLink = item.gallery.drive_folder_id ? `\n\n📁 *Akses Foto Mentah & Hasil Edit:*\nKakak juga bisa melihat dan mendownload semua foto mentah dan foto yang sudah diedit nanti melalui folder Google Drive ini:\n👉 https://drive.google.com/drive/folders/${item.gallery.drive_folder_id}\n\n⚠️ *Penting:* File di link Google Drive dapat diakses selama 6 bulan. Apabila lebih dari 6 bulan file sudah tidak ada, maka hal tersebut sudah diluar tanggung jawab Kleiora.grads.` : '';
-    const message = `Halo kak *${item.full_name}*, terima kasih atas sesinya bersama Kleiora.grads! 📸✨\n\nGaleri foto kakak sudah siap nih. Silakan klik link di bawah ini untuk melihat dan memilih foto mana saja yang ingin diedit sesuai kuota paket:\n\n👉 ${window.location.origin}/g/${item.gallery.slug}${driveLink}\n\nJika ada kesulitan saat memilih, jangan ragu untuk bertanya ya kak!`;
+    const driveLink = item.gallery.drive_folder_id ? `\n\n● *Akses Foto Mentah & Hasil Edit:*\nKakak juga bisa melihat dan mendownload semua foto mentah dan foto yang sudah diedit nanti melalui folder Google Drive ini:\n● https://drive.google.com/drive/folders/${item.gallery.drive_folder_id}\n\n● *Penting:* File di link Google Drive dapat diakses selama 6 bulan. Apabila lebih dari 6 bulan file sudah tidak ada, maka hal tersebut sudah diluar tanggung jawab Kleiora.grads.` : '';
+    const message = `Halo kak *${item.full_name}*, terima kasih atas sesinya bersama Kleiora.grads!\n\nGaleri foto kakak sudah siap nih. Silakan klik link di bawah ini untuk melihat dan memilih foto mana saja yang ingin diedit sesuai kuota paket:\n\n● ${window.location.origin}/g/${item.gallery.slug}${driveLink}\n\nJika ada kesulitan saat memilih, jangan ragu untuk bertanya ya kak!`;
     window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -254,3 +384,222 @@ function Status({ value }: { value: string }) { const styles: Record<string, str
 function Empty({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) { return <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white p-12 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface2)] text-[var(--gold-dark)] [&>svg]:h-5 [&>svg]:w-5">{icon}</div><h3 className="mt-4 font-bold">{title}</h3><p className="mt-1 text-xs text-[var(--muted)]">{text}</p></div>; }
 function DashboardSkeleton() { return <div className="mt-5 space-y-3">{[1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl border border-[var(--line)] bg-white" />)}</div>; }
 function formatDate(value: string) { const date = new Date(`${value}T00:00:00`); return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
+
+function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative flex flex-col">
+      <div className="absolute right-3 top-3 z-10 flex gap-2">
+        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" title="Edit Paket"><Edit2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Paket"><Trash className="h-4 w-4" /></button>
+      </div>
+      <div className="flex h-32 items-center justify-center bg-[var(--surface2)] overflow-hidden">
+        {pkg.image_path ? <img src={API_BASE_URL.replace('/api/v1', '') + pkg.image_path} alt={pkg.name} className="h-full w-full object-cover" /> : <PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" />}
+      </div>
+      <div className="flex flex-col p-5 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${pkg.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{pkg.is_active ? 'Aktif' : 'Tidak Aktif'}</span>
+            <h2 className="mt-2 font-serif text-xl font-semibold leading-tight">{pkg.name}</h2>
+            <p className="font-mono text-[10px] text-[var(--muted)]">{pkg.code}</p>
+          </div>
+          <strong className="text-sm text-[var(--gold-dark)] whitespace-nowrap">{formatRupiah(pkg.price)}</strong>
+        </div>
+        <p className="mt-3 text-xs text-[var(--muted)] line-clamp-2">{pkg.description}</p>
+      </div>
+    </article>
+  );
+}
+
+function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { form: PackageItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem('kleiora_token') || '';
+      const res = await uploadPackageImage(file, token);
+      setForm({ ...form, image_path: res.path });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal upload gambar');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-8">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Paket</p>
+            <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Paket' : 'Buat Paket Baru'}</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
+        </div>
+        
+        <div className="mt-7 grid gap-4 sm:grid-cols-2">
+          <Field label="Nama Paket"><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="admin-field" placeholder="Contoh: Personal Package" /></Field>
+          <Field label="Kode Paket"><input required value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="admin-field" placeholder="Contoh: personal-1" /></Field>
+          
+          <div className="sm:col-span-2">
+            <Field label="Harga (Rp)"><input required type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="admin-field" /></Field>
+          </div>
+          
+          <div className="sm:col-span-2">
+            <Field label="Deskripsi Singkat"><textarea required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="admin-field min-h-[80px]" placeholder="Penjelasan paket..." /></Field>
+          </div>
+
+          <Field label="Durasi (Jam)"><input required type="number" min="1" value={form.duration_hours} onChange={e => setForm({ ...form, duration_hours: Number(e.target.value) })} className="admin-field" /></Field>
+          <Field label="Label Durasi (Opsional)"><input value={form.duration_label || ''} onChange={e => setForm({ ...form, duration_label: e.target.value })} className="admin-field" placeholder="Contoh: 1 jam 30 menit" /></Field>
+          
+          <Field label="Jumlah Lokasi"><input required type="number" min="1" value={form.location_count} onChange={e => setForm({ ...form, location_count: Number(e.target.value) })} className="admin-field" /></Field>
+          <Field label="Jumlah Foto Edit"><input required type="number" min="0" value={form.edited_photos} onChange={e => setForm({ ...form, edited_photos: Number(e.target.value) })} className="admin-field" /></Field>
+          
+          <div className="sm:col-span-2 p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
+            <Field label="Foto Paket">
+              <div className="flex items-center gap-4 mt-2">
+                {form.image_path ? (
+                  <img src={API_BASE_URL.replace('/api/v1', '') + form.image_path} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                ) : (
+                  <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
+                )}
+                <div className="flex-1">
+                  <label className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                    {uploading ? 'Mengupload...' : 'Pilih Gambar'}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} disabled={uploading} />
+                  </label>
+                  <p className="mt-1 text-[10px] text-[var(--muted)]">Format JPG, PNG, atau WEBP.</p>
+                </div>
+              </div>
+            </Field>
+          </div>
+          
+          <div className="sm:col-span-2 flex items-center gap-2 mt-2">
+            <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
+            <label htmlFor="is_active" className="text-sm font-bold text-gray-700">Aktifkan paket ini (Tampil di publik)</label>
+          </div>
+        </div>
+
+        <div className="mt-7 flex gap-3">
+          <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
+          <button disabled={creating || uploading} className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50">
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {creating ? 'Menyimpan...' : 'Simpan Paket'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioItem; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-[var(--line)] bg-white">
+      <div className="absolute right-3 top-3 z-10 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" title="Edit Portofolio"><Edit2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Portofolio"><Trash className="h-4 w-4" /></button>
+      </div>
+      <div className="aspect-[3/4] w-full bg-[var(--surface2)]">
+        {portfolio.image_path ? (
+          <img src={API_BASE_URL.replace('/api/v1', '') + portfolio.image_path} alt={portfolio.title || 'Portfolio'} className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-8 w-8 text-slate-300" /></div>
+        )}
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white line-clamp-1">{portfolio.title || 'Tanpa Judul'}</h3>
+          <span className={`flex h-2 w-2 rounded-full ${portfolio.is_active ? 'bg-emerald-400' : 'bg-slate-400'}`} title={portfolio.is_active ? 'Aktif' : 'Disembunyikan'} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { form: PortfolioItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem('kleiora_token') || '';
+      const paths = [];
+      for (let i = 0; i < files.length; i++) {
+        const res = await uploadPortfolioImage(files[i], token);
+        paths.push(res.path);
+      }
+      setForm({ ...form, image_path: paths.join(',') });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal upload gambar');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const imagePaths = form.image_path ? form.image_path.split(',') : [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <form onSubmit={onSubmit} className="w-full rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Portofolio</p>
+            <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Foto' : 'Upload Foto Baru'}</h2>
+          </div>
+          <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
+        </div>
+        
+        <div className="mt-7 space-y-4">
+          <div className="p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
+            <Field label="Foto Portofolio (Rekomendasi rasio 3:4)">
+              <div className="mt-2 flex flex-col items-center gap-4">
+                {imagePaths.length > 0 ? (
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {imagePaths.map((p, i) => (
+                      <img key={i} src={API_BASE_URL.replace('/api/v1', '') + p} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="h-40 w-32 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-8 w-8 text-slate-300"/></div>
+                )}
+                <div className="w-full">
+                  <label className="btn-secondary flex w-full items-center justify-center gap-2 px-4 py-2.5 text-xs cursor-pointer">
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                    {uploading ? 'Mengupload...' : (form.id ? 'Pilih Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading} />
+                  </label>
+                  <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Format JPG, PNG, atau WEBP. Maks 5MB per gambar.</p>
+                </div>
+              </div>
+            </Field>
+          </div>
+          
+          <Field label="Judul/Keterangan (Opsional)"><input value={form.title || ''} onChange={e => setForm({ ...form, title: e.target.value })} className="admin-field" placeholder="Contoh: Graduation Session" /></Field>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Urutan Tampil (Sort)"><input type="number" min="0" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: Number(e.target.value) })} className="admin-field" /></Field>
+            <div className="flex flex-col justify-end pb-3">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="port_is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
+                <label htmlFor="port_is_active" className="text-sm font-bold text-gray-700">Tampilkan foto</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-7 flex gap-3">
+          <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
+          <button disabled={creating || uploading || !form.image_path} className="btn-primary flex-1 px-5 py-3.5 text-sm disabled:opacity-50">
+            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {creating ? 'Menyimpan...' : 'Simpan Foto'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

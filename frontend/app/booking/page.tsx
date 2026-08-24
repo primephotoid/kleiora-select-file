@@ -29,7 +29,7 @@ function BookingFlow() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [proof, setProof] = useState<File | null>(null);
   const [proofSent, setProofSent] = useState(false);
-  const [form, setForm] = useState({ full_name: '', campus_name: '', whatsapp: '', session_date: '', session_hour: '', session_location: '', payment_type: 'full', notes: '' });
+  const [form, setForm] = useState({ full_name: '', campus_name: '', whatsapp: '', session_date: '', session_hour: '', session_location: '', payment_type: 'full', notes: '', custom_dp_amount: 0 });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState('');
   const [timeLeft, setTimeLeft] = useState(30 * 60);
@@ -153,6 +153,10 @@ function BookingFlow() {
       setError('Periksa kembali data yang ditandai di bawah ini.');
       return;
     }
+    if (form.payment_type === 'dp_custom' && (!form.custom_dp_amount || form.custom_dp_amount < 50000 || form.custom_dp_amount > (selectedPackage?.price || 0))) {
+      setError('Masukkan nominal DP Custom minimal Rp50.000 dan tidak lebih dari harga paket.');
+      return;
+    }
     setFieldErrors({});
     setTimeLeft(30 * 60); // Reset timer when proceeding to payment
     setStep(3);
@@ -160,12 +164,16 @@ function BookingFlow() {
   }
 
   async function createBooking() {
-    const requiresProof = ['transfer', 'qris', 'ewallet'].includes(paymentMethod);
-    if (requiresProof && !proof) {
-      setError('Silakan upload bukti pembayaran terlebih dahulu.');
-      return;
-    }
-    setError('');
+    const requiresProof = ['transfer', 'ewallet'].includes(paymentMethod);
+      if (requiresProof && !proof) {
+        setError('Silakan upload bukti pembayaran terlebih dahulu.');
+        return;
+      }
+      if (proof && proof.size > 5 * 1024 * 1024) {
+        setError('Ukuran file bukti pembayaran terlalu besar (maksimal 5MB).');
+        return;
+      }
+      setError('');
     setSubmitting(true);
     try {
       const result = await apiRequest<{ booking: BookingItem }>('/bookings', { method: 'POST', body: JSON.stringify({ ...form, payment_method: paymentMethod, package_code: selectedCode }) });
@@ -322,11 +330,11 @@ function BookingFlow() {
                   <span className="text-[var(--muted)]">Tanggal</span><span className="text-right font-medium">{form.session_date ? new Date(form.session_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</span>
                   <span className="text-[var(--muted)]">Jam</span><span className="text-right font-medium">{form.session_hour}.00 WITA</span>
                   <span className="text-[var(--muted)]">Lokasi</span><span className="text-right font-medium">{form.session_location}</span>
-                  <span className="text-[var(--muted)]">Opsi Bayar</span><span className="text-right font-medium">{form.payment_type === 'dp' ? 'Down Payment (Setengah Harga)' : 'Full Payment (Lunas)'}</span>
+                  <span className="text-[var(--muted)]">Opsi Bayar</span><span className="text-right font-medium">{form.payment_type === 'dp' ? 'Down Payment (Setengah Harga)' : form.payment_type === 'dp_custom' ? 'DP Custom' : 'Full Payment (Lunas)'}</span>
                 </div>
                 <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--surface2)] p-3 text-sm font-bold">
                   <span>Harus Bayar</span>
-                  <span className="text-[var(--gold-dark)]">{formatRupiah(form.payment_type === 'dp' ? selectedPackage.price / 2 : selectedPackage.price)}</span>
+                  <span className="text-[var(--gold-dark)]">{formatRupiah(form.payment_type === 'dp' ? selectedPackage.price / 2 : form.payment_type === 'dp_custom' ? form.custom_dp_amount : selectedPackage.price)}</span>
                 </div>
               </div>
             </aside>
@@ -342,16 +350,26 @@ function BookingFlow() {
               </div>
               <div className="mt-8">
                 <h3 className="mb-4 font-bold">Opsi Pembayaran</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'full' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
                     <input type="radio" className="hidden" checked={form.payment_type === 'full'} onChange={() => setForm({...form,payment_type:'full'})} />
-                    <p className="text-sm font-medium text-[var(--muted)]">Full Payment (Lunas)</p>
+                    <p className="text-sm font-medium text-[var(--muted)]">Lunas</p>
                     <p className="mt-1 text-xl font-bold">{formatRupiah(selectedPackage.price)}</p>
                   </label>
                   <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'dp' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
                     <input type="radio" className="hidden" checked={form.payment_type === 'dp'} onChange={() => setForm({...form,payment_type:'dp'})} />
-                    <p className="text-sm font-medium text-[var(--muted)]">Down Payment (Setengah Harga)</p>
+                    <p className="text-sm font-medium text-[var(--muted)]">DP 50%</p>
                     <p className="mt-1 text-xl font-bold">{formatRupiah(selectedPackage.price / 2)}</p>
+                  </label>
+                  <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'dp_custom' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
+                    <input type="radio" className="hidden" checked={form.payment_type === 'dp_custom'} onChange={() => setForm({...form,payment_type:'dp_custom'})} />
+                    <p className="text-sm font-medium text-[var(--muted)]">DP Custom</p>
+                    {form.payment_type !== 'dp_custom' && <p className="mt-1 text-xs text-[var(--muted)]">Input manual (Min 50k)</p>}
+                    {form.payment_type === 'dp_custom' && (
+                      <div className="mt-3">
+                        <input type="number" min="50000" max={selectedPackage.price} value={form.custom_dp_amount || ''} onChange={e => setForm({...form, custom_dp_amount: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface2)] p-2 text-sm focus:border-[var(--gold)] focus:outline-none" placeholder="Nominal (Min 50k)" />
+                      </div>
+                    )}
                   </label>
                 </div>
               </div>
@@ -359,9 +377,8 @@ function BookingFlow() {
                 <h3 className="mb-4 font-bold">Pilih Metode Pembayaran</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[
-                    { id: 'transfer', title: 'Transfer Bank', desc: 'Transfer melalui rekening BCA, Mandiri, BRI, BNI', icon: <Landmark className="h-6 w-6" /> },
-                    { id: 'qris', title: 'QRIS', desc: 'Bayar cepat dengan QR Code', icon: <QrCode className="h-6 w-6" /> },
-                    { id: 'ewallet', title: 'E-Wallet', desc: 'OVO, DANA, ShopeePay, GoPay', icon: <Wallet className="h-6 w-6" /> }
+                    { id: 'transfer', title: 'Transfer Bank', desc: 'Transfer melalui rekening BCA, Mandiri, BRI, SeaBank', icon: <Landmark className="h-6 w-6" /> },
+                    { id: 'ewallet', title: 'E-Wallet', desc: 'DANA, ShopeePay, GoPay', icon: <Wallet className="h-6 w-6" /> }
                   ].map(method => (
                     <label key={method.id} className={`flex cursor-pointer gap-4 rounded-xl border p-4 transition-colors ${paymentMethod === method.id ? 'border-[var(--text)] bg-[var(--surface2)] shadow-sm' : 'border-[var(--line)] hover:border-[var(--text)]'}`}>
                       <input type="radio" className="hidden" checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} />
@@ -375,7 +392,7 @@ function BookingFlow() {
                 </div>
               </div>
               
-              {(paymentMethod === 'transfer' || paymentMethod === 'qris' || paymentMethod === 'ewallet') && (
+              {(paymentMethod === 'transfer' || paymentMethod === 'ewallet') && (
                 <div className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--surface2)] p-5 sm:p-6">
                   {paymentMethod === 'transfer' && (
                     <>
@@ -409,22 +426,6 @@ function BookingFlow() {
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">PETUNJUK</p>
                           <p className="mt-1 text-sm text-[var(--muted)]">Transfer sesuai nominal paket terpilih. Simpan bukti transfer untuk diunggah di bawah ini.</p>
                         </div>
-                      </div>
-                    </>
-                  )}
-
-                  {paymentMethod === 'qris' && (
-                    <>
-                      <h3 className="mb-4 font-bold">Scan QRIS</h3>
-                      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 text-center">
-                        <div className="mx-auto flex aspect-square w-56 max-w-full items-center justify-center rounded-2xl border-2 border-dashed border-[var(--line)] bg-[var(--surface2)] p-4 text-[var(--muted)]">
-                          <div className="flex flex-col items-center">
-                            <QrCode className="mb-2 h-16 w-16 opacity-50" />
-                            <span className="text-xs font-bold uppercase">QR Code Kleiora</span>
-                          </div>
-                        </div>
-                        <p className="mt-5 text-sm font-bold uppercase">PT Kleiora Wisuda Abadi</p>
-                        <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-[var(--muted)]">Scan QR Code di atas menggunakan aplikasi m-banking atau e-wallet Anda. Pastikan nama merchant sesuai. Simpan bukti transfer untuk diunggah di bawah ini.</p>
                       </div>
                     </>
                   )}

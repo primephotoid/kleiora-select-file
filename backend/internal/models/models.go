@@ -50,6 +50,25 @@ type Package struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type Portfolio struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Title     string    `json:"title"`
+	ImagePath string    `gorm:"not null" json:"image_path"`
+	IsActive  bool      `gorm:"not null;default:true" json:"is_active"`
+	SortOrder int       `gorm:"not null;default:0" json:"sort_order"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Review struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	ClientName string    `gorm:"not null" json:"client_name"`
+	Rating     int       `gorm:"not null" json:"rating"` // 1-5
+	Comment    string    `gorm:"type:text;not null" json:"comment"`
+	IsApproved bool      `gorm:"not null;default:false" json:"is_approved"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type Booking struct {
 	ID               uint       `gorm:"primaryKey" json:"id"`
 	Code             string     `gorm:"uniqueIndex;not null" json:"code"`
@@ -122,5 +141,6 @@ type CreateBookingRequest struct {
 	SessionHour     string `json:"session_hour"`
 	SessionLocation string `json:"session_location"`
 	PaymentType     string `json:"payment_type"`
+	CustomDPAmount  int64  `json:"custom_dp_amount"`
 	Notes           string `json:"notes"`
 }

@@ -41,7 +41,7 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 	}
 
 	message := fmt.Sprintf(
-		"🔔 *Booking Baru Diterima!*\n\n"+
+		"● *Booking Baru Diterima!*\n\n"+
 			"*Kode:* `%s`\n"+
 			"*Klien:* %s\n"+
 			"*Kampus:* %s\n"+
@@ -129,7 +129,7 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 	}
 
 	message := fmt.Sprintf(
-		"🖼️ *Pilihan Foto Baru Diterima!*\n\n"+
+		"● *Pilihan Foto Baru Diterima!*\n\n"+
 			"*Klien:* %s\n"+
 			"*WhatsApp:* %s\n"+
 			"*Galeri:* %s\n"+

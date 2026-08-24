@@ -14,6 +14,7 @@ export interface PackageItem {
   includes_print?: string;
   includes_teaser: boolean;
   image_path: string;
+  is_active: boolean;
 }
 
 export interface BookingItem {
@@ -37,6 +38,23 @@ export interface BookingItem {
   gallery?: { id: number; slug: string; title: string; status: string; drive_folder_id?: string; selection?: { total_selected: number } };
 }
 
+export interface PortfolioItem {
+  id: number;
+  title: string;
+  image_path: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface ReviewItem {
+  id: number;
+  client_name: string;
+  rating: number;
+  comment: string;
+  is_approved: boolean;
+  created_at: string;
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -48,6 +66,26 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     throw new Error(payload.error || 'Permintaan tidak dapat diproses.');
   }
   return payload as T;
+}
+
+export async function uploadPackageImage(file: File, token: string): Promise<{ message: string; path: string }> {
+  const formData = new FormData();
+  formData.append('image', file);
+  return apiRequest<{ message: string; path: string }>('/studio/packages/upload-image', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+}
+
+export async function uploadPortfolioImage(file: File, token: string): Promise<{ message: string; path: string }> {
+  const formData = new FormData();
+  formData.append('image', file);
+  return apiRequest<{ message: string; path: string }>('/studio/portfolios/upload-image', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
 }
 
 export function formatRupiah(value: number) {
