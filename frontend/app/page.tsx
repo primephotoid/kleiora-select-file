@@ -37,7 +37,7 @@ export default async function HomePage() {
       <main>
         <section className="relative flex min-h-screen items-center justify-center bg-[var(--bg)] pb-12 pt-32 sm:pt-40 text-center">
           <div className="absolute inset-0 z-0">
-            <Image src="/bg-main-v2.jpg" alt="Background" fill className="object-cover" priority unoptimized />
+            <Image src="/bg-main-v3.jpg" alt="Background" fill className="object-cover" priority unoptimized />
             <div className="absolute inset-0 bg-black/40"></div>
             <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[var(--bg)] to-transparent"></div>
           </div>
