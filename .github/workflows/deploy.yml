@@ -11,10 +11,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
-  FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
-  FRONTEND_PORT: ${{ vars.FRONTEND_PORT || '4601' }}
-  BACKEND_PORT: ${{ vars.BACKEND_PORT || '4600' }}
+  NEXT_PUBLIC_API_URL: https://kleioragrads.com/api/v1
+  FRONTEND_ORIGIN: https://kleioragrads.com
+  FRONTEND_PORT: '3055'
+  BACKEND_PORT: '3056'
 
 jobs:
   build-and-validate:
@@ -24,11 +24,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Validate deployment configuration
-        run: |
-          test -n "$NEXT_PUBLIC_API_URL" || { echo "Repository variable NEXT_PUBLIC_API_URL is required" >&2; exit 1; }
-          test -n "$FRONTEND_ORIGIN" || { echo "Repository variable FRONTEND_ORIGIN is required" >&2; exit 1; }
 
       - name: Setup Node.js (Frontend)
         uses: actions/setup-node@v4
@@ -114,6 +109,11 @@ jobs:
           script: |
             set -eu
 
+            test -r /opt/kleiora/.env || {
+              echo "Backend environment file /opt/kleiora/.env was not found or is not readable" >&2
+              exit 1
+            }
+
             echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
             docker pull "${{ secrets.DOCKER_USERNAME }}/kleiora_frontend:latest"
@@ -128,16 +128,12 @@ jobs:
               --name kleiora_backend \
               --restart unless-stopped \
               -p "${{ env.BACKEND_PORT }}:8080" \
+              --env-file /opt/kleiora/.env \
               -v /opt/kleiora/uploads:/app/uploads \
               -e PORT="8080" \
               -e APP_ENV="production" \
-              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-              -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-              -e GOOGLE_DRIVE_API_KEY="${{ secrets.GOOGLE_DRIVE_API_KEY }}" \
               -e FRONTEND_ORIGIN="${{ env.FRONTEND_ORIGIN }}" \
               -e UPLOAD_DIR="uploads" \
-              -e TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
-              -e TELEGRAM_CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID }}" \
               "${{ secrets.DOCKER_USERNAME }}/kleiora_backend:latest"
 
             docker run -d \

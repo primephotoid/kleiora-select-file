@@ -22,6 +22,21 @@ func fixDatetime(query string) string {
 	return iso8601Re.ReplaceAllString(query, "'$1 $2'")
 }
 
+// fixCollation mengganti collation MariaDB baru dengan collation utf8mb4 yang
+// tersedia luas pada MySQL/MariaDB versi server produksi.
+func fixCollation(query string) string {
+	return strings.ReplaceAll(query, "utf8mb4_uca1400_ai_ci", "utf8mb4_unicode_ci")
+}
+
+// fixIndexedText membuat indeks hasil dump MariaDB kompatibel dengan MySQL
+// yang tidak mengizinkan LONGTEXT sebagai key tanpa panjang prefix.
+func fixIndexedText(query string) string {
+	for _, column := range []string{"code", "slug", "email"} {
+		query = strings.ReplaceAll(query, "`"+column+"` longtext", "`"+column+"` varchar(191)")
+	}
+	return strings.ReplaceAll(query, " USING HASH", "")
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("Usage: db-import <path-to-dump.sql>")
@@ -30,9 +45,10 @@ func main() {
 
 	cfg := config.LoadConfig()
 
-	// Buka koneksi tanpa database (untuk eksekusi CREATE DATABASE di dalam dump)
-	dsn := stripDatabase(cfg.DatabaseURL)
-	db, err := sql.Open("mysql", dsn)
+	// Selalu impor ke database yang dipilih DATABASE_URL. Nama database di dalam
+	// file dump dapat berasal dari environment lain dan tidak boleh mengalihkan
+	// target import.
+	db, err := sql.Open("mysql", cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Gagal membuka koneksi MySQL: %v", err)
 	}
@@ -43,7 +59,11 @@ func main() {
 	if err := db.Ping(); err != nil {
 		log.Fatalf("Gagal terhubung ke MySQL: %v", err)
 	}
-	log.Printf("Terhubung ke MySQL. Mengimpor: %s", sqlFile)
+	var databaseName string
+	if err := db.QueryRow("SELECT DATABASE()").Scan(&databaseName); err != nil || databaseName == "" {
+		log.Fatal("DATABASE_URL tidak memilih database")
+	}
+	log.Printf("Terhubung ke database %s. Mengimpor: %s", databaseName, sqlFile)
 
 	file, err := os.Open(sqlFile)
 	if err != nil {
@@ -82,7 +102,12 @@ func executeSQL(db *sql.DB, file *os.File) error {
 
 		// Jalankan statement saat menemukan titik-koma di akhir baris
 		if strings.HasSuffix(trimmed, ";") {
-			query := fixDatetime(strings.TrimSpace(statement.String()))
+			query := fixIndexedText(fixCollation(fixDatetime(strings.TrimSpace(statement.String()))))
+			upperQuery := strings.ToUpper(query)
+			if strings.HasPrefix(upperQuery, "CREATE DATABASE ") || strings.HasPrefix(upperQuery, "USE ") {
+				statement.Reset()
+				continue
+			}
 			if query != "" && query != ";" {
 				if _, err := db.Exec(query); err != nil {
 					return fmt.Errorf("baris %d: %w\nQuery: %s", lineNum, err, truncate(query, 200))
@@ -110,21 +135,6 @@ func executeSQL(db *sql.DB, file *os.File) error {
 
 	log.Printf("Total %d statement berhasil dieksekusi.", executed)
 	return nil
-}
-
-// stripDatabase menghapus nama database dari DSN agar bisa eksekusi CREATE DATABASE.
-func stripDatabase(dsn string) string {
-	// Format: user:pass@tcp(host:port)/dbname?params
-	slashIdx := strings.LastIndex(dsn, "/")
-	if slashIdx == -1 {
-		return dsn
-	}
-	questionIdx := strings.Index(dsn[slashIdx:], "?")
-	var params string
-	if questionIdx != -1 {
-		params = dsn[slashIdx+questionIdx:]
-	}
-	return dsn[:slashIdx+1] + params
 }
 
 func truncate(s string, max int) string {

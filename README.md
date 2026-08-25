@@ -70,21 +70,14 @@ cd frontend && npm run build
 
 Push ke branch `main` menjalankan validasi frontend/backend, membangun image Docker, mengirimkannya ke Docker Hub, lalu melakukan deployment melalui SSH. Workflow juga dapat dijalankan manual dari tab Actions.
 
-Tambahkan Repository Variables berikut di GitHub:
-
-- `NEXT_PUBLIC_API_URL` — URL API publik, misalnya `https://domain.example/api/v1`.
-- `FRONTEND_ORIGIN` — origin frontend tanpa path, misalnya `https://domain.example`.
-- `FRONTEND_PORT` — port frontend di server; opsional, default `4601`.
-- `BACKEND_PORT` — port backend di server; opsional, default `4600`.
+Konfigurasi production menggunakan domain `https://kleioragrads.com`, port frontend `3055`, dan port backend `3056`.
 
 Tambahkan Repository Secrets berikut:
 
 - `DOCKER_USERNAME` dan `DOCKER_PASSWORD`.
 - `SSH_HOST`, `SSH_USERNAME`, dan `SSH_PRIVATE_KEY`.
-- `DATABASE_URL`, `JWT_SECRET`, dan `GOOGLE_DRIVE_API_KEY`.
-- `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` bila notifikasi Telegram digunakan.
 
-Upload pengguna disimpan persisten di `/opt/kleiora/uploads` pada server deployment.
+Seluruh environment backend, termasuk konfigurasi database dan kredensial layanan, dibaca dari `/opt/kleiora/.env` pada server. File tersebut harus sudah tersedia dan dapat dibaca oleh user SSH sebelum deployment dijalankan. Upload pengguna disimpan persisten di `/opt/kleiora/uploads`.
 
 ## Backup database
 
