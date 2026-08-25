@@ -6,26 +6,26 @@ import (
 
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	Email        string    `gorm:"uniqueIndex;not null" json:"email"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	FullName     string    `json:"full_name"`
-	StudioName   string    `json:"studio_name"`
-	Role         string    `gorm:"default:'photographer'" json:"role"`
+	Email        string    `gorm:"size:191;uniqueIndex;not null" json:"email"`
+	PasswordHash string    `gorm:"size:255;not null" json:"-"`
+	FullName     string    `gorm:"size:191" json:"full_name"`
+	StudioName   string    `gorm:"size:191" json:"studio_name"`
+	Role         string    `gorm:"size:32;default:'photographer'" json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Gallery struct {
 	ID             uint       `gorm:"primaryKey" json:"id"`
-	Slug           string     `gorm:"uniqueIndex;not null" json:"slug"`
+	Slug           string     `gorm:"size:191;uniqueIndex;not null" json:"slug"`
 	PhotographerID uint       `gorm:"not null" json:"photographer_id"`
 	BookingID      *uint      `gorm:"index" json:"booking_id,omitempty"`
-	DriveFolderID  string     `gorm:"not null" json:"drive_folder_id"`
-	Title          string     `gorm:"not null" json:"title"`
-	ClientName     string     `json:"client_name"`
-	ClientEmail    string     `json:"client_email"`
-	MaxSelection   int        `gorm:"default:0" json:"max_selection"` // 0 = unlimited
-	Status         string     `gorm:"default:'active'" json:"status"` // active, submitted, archived
+	DriveFolderID  string     `gorm:"size:255;not null" json:"drive_folder_id"`
+	Title          string     `gorm:"size:255;not null" json:"title"`
+	ClientName     string     `gorm:"size:191" json:"client_name"`
+	ClientEmail    string     `gorm:"size:191" json:"client_email"`
+	MaxSelection   int        `gorm:"default:0" json:"max_selection"`         // 0 = unlimited
+	Status         string     `gorm:"size:32;default:'active'" json:"status"` // active, submitted, archived
 	Photos         []Photo    `gorm:"foreignKey:GalleryID" json:"photos,omitempty"`
 	Selection      *Selection `gorm:"foreignKey:GalleryID" json:"selection,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
@@ -34,17 +34,17 @@ type Gallery struct {
 
 type Package struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
-	Code           string    `gorm:"uniqueIndex;not null" json:"code"`
-	Name           string    `gorm:"not null" json:"name"`
-	Description    string    `json:"description"`
+	Code           string    `gorm:"size:191;uniqueIndex;not null" json:"code"`
+	Name           string    `gorm:"size:191;not null" json:"name"`
+	Description    string    `gorm:"type:text" json:"description"`
 	Price          int64     `gorm:"not null" json:"price"`
 	DurationHours  int       `gorm:"not null;default:1" json:"duration_hours"`
-	DurationLabel  string    `json:"duration_label,omitempty"`
+	DurationLabel  string    `gorm:"size:64" json:"duration_label,omitempty"`
 	LocationCount  int       `gorm:"not null;default:1" json:"location_count"`
 	EditedPhotos   int       `gorm:"not null;default:20" json:"edited_photos"`
-	IncludesPrint  string    `json:"includes_print,omitempty"`
+	IncludesPrint  string    `gorm:"size:255" json:"includes_print,omitempty"`
 	IncludesTeaser bool      `json:"includes_teaser"`
-	ImagePath      string    `json:"image_path"`
+	ImagePath      string    `gorm:"size:512" json:"image_path"`
 	IsActive       bool      `gorm:"not null;default:true" json:"is_active"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
@@ -52,8 +52,8 @@ type Package struct {
 
 type Portfolio struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
-	Title     string    `json:"title"`
-	ImagePath string    `gorm:"not null" json:"image_path"`
+	Title     string    `gorm:"size:255" json:"title"`
+	ImagePath string    `gorm:"size:512;not null" json:"image_path"`
 	IsActive  bool      `gorm:"not null;default:true" json:"is_active"`
 	SortOrder int       `gorm:"not null;default:0" json:"sort_order"`
 	CreatedAt time.Time `json:"created_at"`
@@ -62,7 +62,7 @@ type Portfolio struct {
 
 type Review struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
-	ClientName string    `gorm:"not null" json:"client_name"`
+	ClientName string    `gorm:"size:191;not null" json:"client_name"`
 	Rating     int       `gorm:"not null" json:"rating"` // 1-5
 	Comment    string    `gorm:"type:text;not null" json:"comment"`
 	IsApproved bool      `gorm:"not null;default:false" json:"is_approved"`
@@ -71,22 +71,22 @@ type Review struct {
 
 type Booking struct {
 	ID               uint       `gorm:"primaryKey" json:"id"`
-	Code             string     `gorm:"uniqueIndex;not null" json:"code"`
+	Code             string     `gorm:"size:191;uniqueIndex;not null" json:"code"`
 	PackageID        uint       `gorm:"not null;index" json:"package_id"`
 	Package          Package    `json:"package"`
-	FullName         string     `gorm:"not null" json:"full_name"`
-	CampusName       string     `gorm:"not null" json:"campus_name"`
-	WhatsApp         string     `gorm:"not null" json:"whatsapp"`
-	SessionDate      string     `gorm:"not null;index:idx_booking_slot" json:"session_date"`
-	SessionHour      string     `gorm:"not null;index:idx_booking_slot" json:"session_hour"`
-	SessionLocation  string     `gorm:"not null" json:"session_location"`
-	PaymentType      string     `gorm:"not null;default:'full'" json:"payment_type"`
+	FullName         string     `gorm:"size:191;not null" json:"full_name"`
+	CampusName       string     `gorm:"size:191;not null" json:"campus_name"`
+	WhatsApp         string     `gorm:"size:32;not null" json:"whatsapp"`
+	SessionDate      string     `gorm:"size:10;not null;index:idx_booking_slot" json:"session_date"`
+	SessionHour      string     `gorm:"size:5;not null;index:idx_booking_slot" json:"session_hour"`
+	SessionLocation  string     `gorm:"size:255;not null" json:"session_location"`
+	PaymentType      string     `gorm:"size:32;not null;default:'full'" json:"payment_type"`
 	AmountDue        int64      `gorm:"not null" json:"amount_due"`
-	PaymentMethod    string     `json:"payment_method,omitempty"`
-	PaymentProofPath string     `json:"-"`
-	PaymentStatus    string     `gorm:"not null;default:'pending'" json:"payment_status"`
-	Status           string     `gorm:"not null;default:'pending_payment';index" json:"status"`
-	Notes            string     `json:"notes,omitempty"`
+	PaymentMethod    string     `gorm:"size:64" json:"payment_method,omitempty"`
+	PaymentProofPath string     `gorm:"size:512" json:"-"`
+	PaymentStatus    string     `gorm:"size:32;not null;default:'pending'" json:"payment_status"`
+	Status           string     `gorm:"size:32;not null;default:'pending_payment';index" json:"status"`
+	Notes            string     `gorm:"type:text" json:"notes,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	VerifiedAt       *time.Time `json:"verified_at,omitempty"`
@@ -96,11 +96,11 @@ type Booking struct {
 type Photo struct {
 	ID           uint   `gorm:"primaryKey" json:"id"`
 	GalleryID    uint   `gorm:"index" json:"gallery_id"`
-	DriveFileID  string `gorm:"not null" json:"drive_file_id"`
-	FileName     string `gorm:"not null" json:"file_name"`
-	MimeType     string `json:"mime_type"`
-	ThumbnailURL string `json:"thumbnail_url"`
-	ViewURL      string `json:"view_url"`
+	DriveFileID  string `gorm:"size:255;not null" json:"drive_file_id"`
+	FileName     string `gorm:"size:255;not null" json:"file_name"`
+	MimeType     string `gorm:"size:127" json:"mime_type"`
+	ThumbnailURL string `gorm:"type:text" json:"thumbnail_url"`
+	ViewURL      string `gorm:"type:text" json:"view_url"`
 	Width        int    `json:"width,omitempty"`
 	Height       int    `json:"height,omitempty"`
 }
@@ -110,7 +110,7 @@ type Selection struct {
 	GalleryID     uint      `gorm:"uniqueIndex;not null" json:"gallery_id"`
 	SelectedFiles string    `gorm:"type:text" json:"selected_files"` // JSON string array of file names or Drive IDs
 	TotalSelected int       `json:"total_selected"`
-	ClientNotes   string    `json:"client_notes"`
+	ClientNotes   string    `gorm:"type:text" json:"client_notes"`
 	SubmittedAt   time.Time `json:"submitted_at"`
 }
 
