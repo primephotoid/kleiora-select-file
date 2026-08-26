@@ -326,7 +326,6 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
 	}
 	h.db.Preload("Package").First(&booking, booking.ID)
-	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking})
 }
 
@@ -340,7 +339,7 @@ func (h *Handler) GetBooking(c *fiber.Ctx) error {
 
 func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	var booking models.Booking
-	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+	if err := h.db.Preload("Package").Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking not found")
 	}
 	file, err := c.FormFile("proof")
@@ -376,6 +375,9 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 		_ = os.Remove(path)
 		return apiError(c, fiber.StatusInternalServerError, "Failed to update payment status")
 	}
+
+	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
+
 	return c.JSON(fiber.Map{"message": "Payment proof submitted for admin verification", "payment_status": "submitted"})
 }
 

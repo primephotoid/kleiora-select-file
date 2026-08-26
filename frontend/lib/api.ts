@@ -10,6 +10,13 @@ const getApiBaseUrl = () => {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+export function getImageUrl(path: string | undefined | null): string {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  if (path.startsWith('/uploads')) return API_BASE_URL.replace('/api/v1', '') + path;
+  return path;
+}
+
 export interface PackageItem {
   id: number;
   code: string;
@@ -66,14 +73,25 @@ export interface ReviewItem {
 }
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    credentials: 'include',
-    headers: init?.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init?.headers },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers: init?.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init?.headers },
+    });
+  } catch (error) {
+    // Menangkap error jaringan seperti server mati atau masalah CORS
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg.includes('Failed to fetch')) {
+      throw new Error('Gagal menghubungi server. Pastikan server backend sedang menyala (npm run dev/air) dan konfigurasi CORS sudah benar.');
+    }
+    throw new Error(`Koneksi ke server bermasalah: ${errMsg}`);
+  }
+
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || 'Permintaan tidak dapat diproses.');
+    throw new Error(payload.error || `Error ${response.status}: Permintaan tidak dapat diproses oleh server.`);
   }
   return payload as T;
 }

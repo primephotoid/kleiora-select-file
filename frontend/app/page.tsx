@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ArrowRight, CalendarCheck, Check, Images, MessageCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ReviewSection } from '@/components/ReviewSection';
-import { API_BASE_URL, formatRupiah, PortfolioItem, ReviewItem } from '@/lib/api';
+import { API_BASE_URL, formatRupiah, getImageUrl, PortfolioItem, ReviewItem } from '@/lib/api';
 
 async function getPortfolios(): Promise<PortfolioItem[]> {
   try {
@@ -94,8 +94,9 @@ export default async function HomePage() {
               </div>
               <div className="grid gap-5 sm:grid-cols-3">
                 {portfolios.map(port => (
-                  <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-white shadow-sm">
-                    <Image src={API_BASE_URL.replace('/api/v1', '') + port.image_path} alt={port.title || 'Portfolio'} fill className="object-cover transition duration-500 hover:scale-105" sizes="(max-width: 640px) 100vw, 33vw" />
+                  <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group">
+                    <img src={getImageUrl(port.image_path)} alt={port.title || 'Portfolio'} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   </div>
                 ))}
               </div>

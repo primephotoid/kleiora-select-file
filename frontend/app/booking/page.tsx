@@ -1,12 +1,12 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useEffect, useMemo, useState, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, CreditCard, ImageIcon } from 'lucide-react';
+import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, ImageIcon, Copy } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
-import { apiRequest, BookingItem, formatRupiah, PackageItem } from '@/lib/api';
+import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl } from '@/lib/api';
+import imageCompression from 'browser-image-compression';
 
 interface Slot { hour: string; remaining: number; available: boolean }
 
@@ -33,9 +33,21 @@ function BookingFlow() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState('');
   const [timeLeft, setTimeLeft] = useState(30 * 60);
+  const [paymentExpiresAt, setPaymentExpiresAt] = useState<number | null>(null);
   const [sessionTimestamp, setSessionTimestamp] = useState(Date.now());
+  const [copiedText, setCopiedText] = useState('');
 
   const [mounted, setMounted] = useState(false);
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      setTimeout(() => setCopiedText(''), 2000);
+    } catch (err) {
+      console.error('Failed to copy', err);
+    }
+  }
 
   // Restore state on mount
   useEffect(() => {
@@ -54,7 +66,7 @@ function BookingFlow() {
           setSelectedCode(parsed.selectedCode || '');
           if (parsed.form) setForm(parsed.form);
           setPaymentMethod(parsed.paymentMethod || '');
-          setTimeLeft(parsed.timeLeft || 30 * 60);
+          if (parsed.paymentExpiresAt) setPaymentExpiresAt(parsed.paymentExpiresAt);
           if (parsed.timestamp) setSessionTimestamp(parsed.timestamp);
         }
       } catch (e) {
@@ -69,7 +81,7 @@ function BookingFlow() {
     if (!mounted) return;
     if (step < 4) {
       localStorage.setItem('kleiora_booking_state', JSON.stringify({
-        step, selectedCode, form, paymentMethod, timeLeft, timestamp: sessionTimestamp
+        step, selectedCode, form, paymentMethod, paymentExpiresAt, timestamp: sessionTimestamp
       }));
     } else {
       localStorage.removeItem('kleiora_booking_state');
@@ -77,20 +89,29 @@ function BookingFlow() {
   }, [step, selectedCode, form, paymentMethod, timeLeft, sessionTimestamp, mounted]);
 
   useEffect(() => {
-    if (step !== 3) return;
+    if (!paymentExpiresAt || step === 4) return;
+    
+    function tick() {
+      const remaining = Math.floor((paymentExpiresAt! - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setTimeLeft(0);
+        setStep(1);
+        setError('Waktu pembayaran habis. Silakan ulangi proses booking.');
+        setPaymentExpiresAt(null);
+        return false;
+      }
+      setTimeLeft(remaining);
+      return true;
+    }
+
+    if (!tick()) return;
+
     const interval = setInterval(() => {
-      setTimeLeft(current => {
-        if (current <= 1) {
-          clearInterval(interval);
-          setStep(1);
-          setError('Waktu pembayaran habis. Silakan ulangi proses booking.');
-          return 0;
-        }
-        return current - 1;
-      });
+      if (!tick()) clearInterval(interval);
     }, 1000);
+
     return () => clearInterval(interval);
-  }, [step]);
+  }, [step, paymentExpiresAt]);
 
   const displayMinutes = Math.floor(timeLeft / 60).toString().padStart(2, '0');
   const displaySeconds = (timeLeft % 60).toString().padStart(2, '0');
@@ -158,7 +179,9 @@ function BookingFlow() {
       return;
     }
     setFieldErrors({});
-    setTimeLeft(30 * 60); // Reset timer when proceeding to payment
+    if (!paymentExpiresAt || paymentExpiresAt <= Date.now()) {
+      setPaymentExpiresAt(Date.now() + 30 * 60 * 1000);
+    }
     setStep(3);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -214,7 +237,7 @@ function BookingFlow() {
                 {packages.map(pkg => (
                   <div key={pkg.code} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--surface)] text-left transition hover:-translate-y-1">
                     <div className="relative aspect-[16/9]">
-                      <Image src={pkg.image_path} alt={pkg.name} fill className="object-cover object-[center_30%]" sizes="(max-width:1024px) 100vw, 33vw" />
+                      <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
                     </div>
                     <div className="p-6">
                       <h2 className="font-serif text-2xl font-semibold">{pkg.name}</h2>
@@ -258,7 +281,7 @@ function BookingFlow() {
                 </div>
               </div>
               <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
-                <div className="relative aspect-[4/3] overflow-hidden rounded-xl"><Image src={selectedPackage.image_path} alt={selectedPackage.name} fill className="object-cover" sizes="300px" /></div>
+                <div className="relative aspect-[4/3] overflow-hidden rounded-xl"><img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" /></div>
                 <h2 className="mt-5 font-serif text-2xl font-semibold">{selectedPackage.name}</h2>
                 <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(selectedPackage.price)}</p>
                 <p className="mt-4 text-xs leading-5 text-[var(--muted)]">Kuota pilihan setelah sesi: {selectedPackage.edited_photos} foto.</p>
@@ -314,8 +337,8 @@ function BookingFlow() {
               <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6">
                 <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Rangkuman Pesanan</h3>
                 <div className="flex items-center gap-3">
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg">
-                    <Image src={selectedPackage.image_path} alt={selectedPackage.name} fill className="object-cover" sizes="48px" />
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[var(--surface2)]">
+                    <img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" />
                   </div>
                   <div>
                     <p className="font-bold">{selectedPackage.name}</p>
@@ -400,25 +423,45 @@ function BookingFlow() {
                       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK BCA</p>
-                          <p className="mt-1 text-xl font-bold">7685839920</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-xl font-bold">7685839920</p>
+                            <button type="button" onClick={() => copyToClipboard('7685839920')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '7685839920' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK BRI</p>
-                          <p className="mt-1 text-xl font-bold">205301004823538</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-xl font-bold">205301004823538</p>
+                            <button type="button" onClick={() => copyToClipboard('205301004823538')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '205301004823538' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">BANK MANDIRI</p>
-                          <p className="mt-1 text-xl font-bold">1520033239431</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-xl font-bold">1520033239431</p>
+                            <button type="button" onClick={() => copyToClipboard('1520033239431')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '1520033239431' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">SEABANK</p>
-                          <p className="mt-1 text-xl font-bold">901773152340</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-xl font-bold">901773152340</p>
+                            <button type="button" onClick={() => copyToClipboard('901773152340')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '901773152340' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
@@ -436,13 +479,23 @@ function BookingFlow() {
                       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">DANA / ShopeePay</p>
-                          <p className="mt-1 text-2xl font-bold">085757746494</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-2xl font-bold">085757746494</p>
+                            <button type="button" onClick={() => copyToClipboard('085757746494')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '085757746494' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="mt-1 text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
                         <div className="mb-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">OVO</p>
-                          <p className="mt-1 text-2xl font-bold">085752528300</p>
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-2xl font-bold">085752528300</p>
+                            <button type="button" onClick={() => copyToClipboard('085752528300')} className="flex items-center gap-1.5 rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--line)]">
+                              {copiedText === '085752528300' ? <><Check className="h-3 w-3 text-green-600" /> Disalin</> : <><Copy className="h-3 w-3" /> Salin</>}
+                            </button>
+                          </div>
                           <p className="mt-1 text-xs text-[var(--muted)]">Atas Nama: <strong>MUHAMMAD NOER IKHSAN</strong></p>
                         </div>
                         <hr className="my-4 border-[var(--line)]" />
@@ -460,7 +513,17 @@ function BookingFlow() {
                       <ImageIcon className="mb-3 h-8 w-8 text-[var(--muted)]" />
                       <span className="text-sm font-semibold text-[var(--text)]">{proof ? proof.name : 'Pilih foto bukti pembayaran (.jpg, .png, .webp)'}</span>
                       <span className="mt-1 text-xs text-[var(--muted)]">Maksimal ukuran file: 5MB</span>
-                      <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={e => setProof(e.target.files?.[0] ?? null)} />
+                      <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true });
+                          setProof(compressed);
+                        } catch (err) {
+                          console.error(err);
+                          setProof(file);
+                        }
+                      }} />
                     </label>
                   </div>
                 </div>

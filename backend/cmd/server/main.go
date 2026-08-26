@@ -86,7 +86,7 @@ func main() {
 	h := handlers.NewHandler(db, cfg, driveService)
 	app := fiber.New(fiber.Config{
 		AppName:      "Kleiora API",
-		BodyLimit:    6 * 1024 * 1024,
+		BodyLimit:    30 * 1024 * 1024,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -103,7 +103,7 @@ func main() {
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PATCH,DELETE,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization", AllowCredentials: true}))
+	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization", AllowCredentials: true}))
 	app.Use(limiter.New(limiter.Config{Max: 120, Expiration: time.Minute, LimitReached: func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Too many requests"})
 	}}))

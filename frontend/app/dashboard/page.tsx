@@ -8,7 +8,7 @@ import {
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
   ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud
 } from 'lucide-react';
-import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
+import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
@@ -393,7 +393,7 @@ function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () =
         <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Paket"><Trash className="h-4 w-4" /></button>
       </div>
       <div className="flex h-32 items-center justify-center bg-[var(--surface2)] overflow-hidden">
-        {pkg.image_path ? <img src={API_BASE_URL.replace('/api/v1', '') + pkg.image_path} alt={pkg.name} className="h-full w-full object-cover" /> : <PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" />}
+        {pkg.image_path ? <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="h-full w-full object-cover" /> : <PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" />}
       </div>
       <div className="flex flex-col p-5 flex-1">
         <div className="flex items-start justify-between gap-3">
@@ -461,7 +461,7 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
             <Field label="Foto Paket">
               <div className="flex items-center gap-4 mt-2">
                 {form.image_path ? (
-                  <img src={API_BASE_URL.replace('/api/v1', '') + form.image_path} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                  <img src={getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
                 ) : (
                   <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
                 )}
@@ -504,7 +504,7 @@ function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioIt
       </div>
       <div className="aspect-[3/4] w-full bg-[var(--surface2)]">
         {portfolio.image_path ? (
-          <img src={API_BASE_URL.replace('/api/v1', '') + portfolio.image_path} alt={portfolio.title || 'Portfolio'} className="h-full w-full object-cover" loading="lazy" />
+          <img src={getImageUrl(portfolio.image_path)} alt={portfolio.title || 'Portfolio'} className="h-full w-full object-cover" loading="lazy" />
         ) : (
           <div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-8 w-8 text-slate-300" /></div>
         )}
