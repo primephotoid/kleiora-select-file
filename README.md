@@ -20,14 +20,14 @@ CREATE DATABASE kleiora CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 -- Konfigurasi lokal saat ini memakai user root tanpa password.
 ```
 
-Salin konfigurasi contoh dan isi `DATABASE_URL`, `JWT_SECRET`, serta `GOOGLE_DRIVE_API_KEY`:
+Salin konfigurasi contoh dan isi `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_DRIVE_API_KEY`, serta kredensial Telegram bila notifikasi digunakan:
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 ```
 
-Backend membaca environment dari shell (file `.env` tidak dimuat otomatis):
+Backend memuat `backend/.env`; environment dari container production tetap diberikan oleh `/opt/kleiora/.env`:
 
 ```bash
 cd backend
@@ -46,7 +46,7 @@ npm run dev
 ```
 
 Frontend tersedia di `http://localhost:3000` dan API di `http://localhost:4000`.
-Pada instalasi baru, halaman `/studio/login` menyediakan pendaftaran akun studio pertama. Setelah akun pertama dibuat, endpoint pendaftaran otomatis ditutup.
+Pada instalasi lokal baru, halaman `/studio/login` menyediakan pendaftaran akun admin pertama. Registrasi publik selalu ditutup saat `APP_ENV=production`; gunakan seeder admin untuk production.
 
 Untuk membuat atau memperbarui akun admin dari konfigurasi `backend/.env`:
 
@@ -56,6 +56,8 @@ go run ./cmd/seed-admin
 ```
 
 Seeder membaca `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`, dan `ADMIN_STUDIO_NAME`. Password minimal 12 karakter dan disimpan sebagai hash bcrypt; menjalankan perintah kembali akan memperbarui akun dengan email yang sama.
+
+Booking baru menerima token akses terpisah dari kode booking. Untuk booking lama yang belum memiliki token, admin dapat membuat token melalui `POST /api/v1/studio/bookings/{code}/access-token` (wajib autentikasi admin), lalu mengirim link `https://kleioragrads.com/booking#code={code}&token={access_token}` kepada klien. Fragment token langsung dihapus dari address bar setelah dibaca frontend.
 
 ## Verifikasi
 
@@ -77,7 +79,7 @@ Tambahkan Repository Secrets berikut:
 - `DOCKER_USERNAME` dan `DOCKER_PASSWORD`.
 - `SSH_HOST`, `SSH_USERNAME`, dan `SSH_PRIVATE_KEY`.
 
-Seluruh environment backend, termasuk konfigurasi database dan kredensial layanan, dibaca dari `/opt/kleiora/.env` pada server. File tersebut harus sudah tersedia dan dapat dibaca oleh user SSH sebelum deployment dijalankan. Upload pengguna disimpan persisten di `/opt/kleiora/uploads`.
+Seluruh environment backend, termasuk konfigurasi database dan kredensial layanan, dibaca dari `/opt/kleiora/.env` pada server. File tersebut harus memuat `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID`, tersedia, dan dapat dibaca oleh user SSH sebelum deployment dijalankan. Workflow menghentikan deployment bila kedua nilai Telegram kosong. Upload pengguna disimpan persisten di `/opt/kleiora/uploads`; bukti pembayaran ditempatkan di subdirektori privat yang tidak dilayani lewat HTTP.
 
 ## Backup database
 
@@ -93,5 +95,3 @@ Hasil dump tersimpan di `backend/database/dumps/kleiora-YYYYMMDD-HHMMSS.sql`. Fi
 ## Catatan pembayaran
 
 Versi ini tidak membuat QRIS atau Virtual Account palsu. Booking dibuat dengan status `pending_payment`; pelanggan dapat mengunggah bukti JPG/PNG dan admin memverifikasinya dari dashboard. Integrasi payment gateway dapat ditambahkan sebagai tahap tersendiri.
-
-s

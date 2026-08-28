@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,8 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"kleiora-backend/internal/config"
@@ -30,9 +32,16 @@ import (
 
 const slotCapacity int64 = 2
 
+const bookingTokenHeader = "X-Booking-Token"
+const paymentProofVersionHeader = "X-Payment-Proof-Version"
+
 var (
 	hourPattern     = regexp.MustCompile(`^(0[6-9]|1[0-9])$`)
 	whatsAppPattern = regexp.MustCompile(`^[0-9+][0-9 -]{7,19}$`)
+	errSlotFull     = errors.New("slot_full")
+	errSlotBusy     = errors.New("slot_busy")
+	registrationMu  sync.Mutex
+	bookingCreateMu sync.Mutex
 )
 
 type Handler struct {
@@ -53,7 +62,7 @@ func randomToken(bytes int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generateBookingCode(db *gorm.DB, sessionDate string, packageCode string) (string, error) {
+func generateBookingCode(sessionDate string, packageCode string) (string, error) {
 	parts := strings.Split(sessionDate, "-")
 	dateStr := "000000"
 	if len(parts) == 3 {
@@ -74,25 +83,29 @@ func generateBookingCode(db *gorm.DB, sessionDate string, packageCode string) (s
 		prefix = "GRP"
 	}
 
-	var lastBooking models.Booking
-	var seq int64 = 1
-
-	if err := db.Model(&models.Booking{}).Where("session_date = ?", sessionDate).Order("id DESC").First(&lastBooking).Error; err != nil {
-		if err != gorm.ErrRecordNotFound {
-			return "", err
-		}
-	} else {
-		// Example Code: KLR-PRSNL-160826-003
-		partsCode := strings.Split(lastBooking.Code, "-")
-		if len(partsCode) >= 4 {
-			if lastSeq, err := strconv.ParseInt(partsCode[3], 10, 64); err == nil {
-				seq = lastSeq + 1
-			}
-		}
+	suffix, err := randomToken(4)
+	if err != nil {
+		return "", err
 	}
+	return fmt.Sprintf("KLR-%s-%s-%s", prefix, dateStr, strings.ToUpper(suffix)), nil
+}
 
-	code := fmt.Sprintf("KLR-%s-%s-%03d", prefix, dateStr, seq)
-	return code, nil
+func bookingTokenHash(rawToken string) string {
+	digest := sha256.Sum256([]byte(rawToken))
+	return hex.EncodeToString(digest[:])
+}
+
+func bookingTokenFromRequest(c *fiber.Ctx) string {
+	return strings.TrimSpace(c.Get(bookingTokenHeader))
+}
+
+func authorizeBookingAccess(c *fiber.Ctx, booking *models.Booking) bool {
+	rawToken := bookingTokenFromRequest(c)
+	if rawToken == "" || booking.AccessTokenHash == "" {
+		return false
+	}
+	actual := bookingTokenHash(rawToken)
+	return subtle.ConstantTimeCompare([]byte(actual), []byte(booking.AccessTokenHash)) == 1
 }
 
 func apiError(c *fiber.Ctx, status int, message string) error {
@@ -155,6 +168,12 @@ func (h *Handler) AdminRequired(c *fiber.Ctx) error {
 }
 
 func (h *Handler) Register(c *fiber.Ctx) error {
+	if h.cfg.Environment == "production" {
+		return apiError(c, fiber.StatusForbidden, "Public studio registration is disabled in production; use the admin seeder")
+	}
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
+
 	var userCount int64
 	if err := h.db.Model(&models.User{}).Count(&userCount).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to check studio setup")
@@ -179,7 +198,7 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to secure password")
 	}
-	user := models.User{Email: req.Email, PasswordHash: string(hashedPassword), FullName: strings.TrimSpace(req.FullName), StudioName: strings.TrimSpace(req.StudioName), Role: "photographer"}
+	user := models.User{Email: req.Email, PasswordHash: string(hashedPassword), FullName: strings.TrimSpace(req.FullName), StudioName: strings.TrimSpace(req.StudioName), Role: "admin"}
 	if err := h.db.Create(&user).Error; err != nil {
 		return apiError(c, fiber.StatusConflict, "Email already registered")
 	}
@@ -292,7 +311,11 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if err := h.db.Where("code = ? AND is_active = ?", req.PackageCode, true).First(&pkg).Error; err != nil {
 		return apiError(c, fiber.StatusBadRequest, "Paket yang dipilih tidak tersedia")
 	}
-	code, err := generateBookingCode(h.db, req.SessionDate, req.PackageCode)
+	accessToken, err := randomToken(32)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to secure booking access")
+	}
+	code, err := generateBookingCode(req.SessionDate, req.PackageCode)
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to generate booking code")
 	}
@@ -308,31 +331,62 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		}
 		amount = req.CustomDPAmount
 	}
-	booking := models.Booking{Code: strings.ToUpper(code), PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
-	err = h.db.Transaction(func(tx *gorm.DB) error {
-		var count int64
-		if err := tx.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", req.SessionDate, req.SessionHour, "cancelled").Count(&count).Error; err != nil {
-			return err
-		}
-		if count >= slotCapacity {
-			return errors.New("slot_full")
-		}
-		return tx.Create(&booking).Error
-	})
+	booking := models.Booking{Code: strings.ToUpper(code), PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
+	bookingCreateMu.Lock()
+	defer bookingCreateMu.Unlock()
+	persistBooking := func(db *gorm.DB) error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			var count int64
+			if err := tx.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", req.SessionDate, req.SessionHour, "cancelled").Count(&count).Error; err != nil {
+				return err
+			}
+			if count >= slotCapacity {
+				return errSlotFull
+			}
+			return tx.Create(&booking).Error
+		})
+	}
+	if h.db.Dialector.Name() == "mysql" {
+		lockName := fmt.Sprintf("kleiora-slot-%s-%s", req.SessionDate, req.SessionHour)
+		err = h.db.Connection(func(conn *gorm.DB) error {
+			var acquired int
+			if lockErr := conn.Raw("SELECT GET_LOCK(?, 10)", lockName).Scan(&acquired).Error; lockErr != nil {
+				return lockErr
+			}
+			if acquired != 1 {
+				return errSlotBusy
+			}
+			defer func() {
+				var released int
+				if releaseErr := conn.Raw("SELECT RELEASE_LOCK(?)", lockName).Scan(&released).Error; releaseErr != nil || released != 1 {
+					log.Printf("failed to release booking slot lock %s: %v", lockName, releaseErr)
+				}
+			}()
+			return persistBooking(conn)
+		})
+	} else {
+		err = persistBooking(h.db)
+	}
 	if err != nil {
-		if err.Error() == "slot_full" {
+		if errors.Is(err, errSlotFull) {
 			return apiError(c, fiber.StatusConflict, "Jadwal sesi yang dipilih sudah penuh")
+		}
+		if errors.Is(err, errSlotBusy) {
+			return apiError(c, fiber.StatusServiceUnavailable, "Jadwal sedang diproses; silakan coba lagi")
 		}
 		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
 	}
 	h.db.Preload("Package").First(&booking, booking.ID)
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking, "access_token": accessToken})
 }
 
 func (h *Handler) GetBooking(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Preload("Package").Preload("Gallery").Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	if !authorizeBookingAccess(c, &booking) {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid booking access token")
 	}
 	return c.JSON(booking)
 }
@@ -341,6 +395,12 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Preload("Package").Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	if !authorizeBookingAccess(c, &booking) {
+		return apiError(c, fiber.StatusUnauthorized, "Invalid booking access token")
+	}
+	if booking.PaymentStatus == "verified" || booking.Status == "completed" {
+		return apiError(c, fiber.StatusConflict, "Payment for this booking is already finalized")
 	}
 	file, err := c.FormFile("proof")
 	if err != nil || file.Size > 5*1024*1024 {
@@ -363,17 +423,29 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to store payment proof")
 	}
-	if err := os.MkdirAll(h.cfg.UploadDir, 0o750); err != nil {
+	if err := os.MkdirAll(h.cfg.PaymentProofDir, 0o750); err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to prepare upload storage")
 	}
-	path := filepath.Join(h.cfg.UploadDir, name+ext)
+	path := filepath.Join(h.cfg.PaymentProofDir, name+ext)
 	if err := c.SaveFile(file, path); err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to store payment proof")
 	}
 	method := strings.TrimSpace(c.FormValue("payment_method"))
-	if err := h.db.Model(&booking).Updates(map[string]any{"payment_proof_path": path, "payment_method": method, "payment_status": "submitted"}).Error; err != nil {
+	proofVersion, err := randomToken(16)
+	if err != nil {
+		_ = os.Remove(path)
+		return apiError(c, fiber.StatusInternalServerError, "Failed to version payment proof")
+	}
+	result := h.db.Model(&models.Booking{}).
+		Where("id = ? AND payment_status <> ? AND status <> ?", booking.ID, "verified", "completed").
+		Updates(map[string]any{"payment_proof_path": path, "payment_proof_version": proofVersion, "payment_method": method, "payment_status": "submitted"})
+	if result.Error != nil {
 		_ = os.Remove(path)
 		return apiError(c, fiber.StatusInternalServerError, "Failed to update payment status")
+	}
+	if result.RowsAffected != 1 {
+		_ = os.Remove(path)
+		return apiError(c, fiber.StatusConflict, "Payment for this booking is already finalized")
 	}
 
 	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
@@ -391,27 +463,6 @@ func (h *Handler) ListBookings(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to load bookings")
 	}
 
-	for i := range bookings {
-		b := &bookings[i]
-
-		var gal models.Gallery
-		if err := h.db.Preload("Selection").Where("booking_id = ? OR (client_name != '' AND (LOWER(client_name) = LOWER(?) OR LOWER(?) LIKE LOWER(CONCAT('%', client_name, '%')))) OR (title != '' AND LOWER(title) LIKE LOWER(CONCAT('%', ?, '%')))", b.ID, b.FullName, b.FullName, b.FullName).Order("created_at desc").First(&gal).Error; err == nil {
-			b.Gallery = &gal
-			if gal.BookingID == nil {
-				h.db.Model(&gal).Update("booking_id", b.ID)
-			}
-		}
-
-		if (b.Gallery != nil && (b.Gallery.Status == "submitted" || b.Gallery.Selection != nil)) || b.Status == "completed" {
-			b.Status = "completed"
-			b.PaymentStatus = "verified"
-			h.db.Model(&models.Booking{}).Where("id = ?", b.ID).Updates(map[string]any{
-				"status":         "completed",
-				"payment_status": "verified",
-			})
-		}
-	}
-
 	return c.JSON(fiber.Map{"bookings": bookings})
 }
 
@@ -426,14 +477,39 @@ func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai", "booking": booking})
 }
 
+func (h *Handler) RotateBookingAccessToken(c *fiber.Ctx) error {
+	var booking models.Booking
+	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	accessToken, err := randomToken(32)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to generate booking access token")
+	}
+	if err := h.db.Model(&booking).Update("access_token_hash", bookingTokenHash(accessToken)).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to update booking access token")
+	}
+	return c.JSON(fiber.Map{"code": booking.Code, "access_token": accessToken})
+}
+
 func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking not found")
 	}
+	proofVersion := strings.TrimSpace(c.Get(paymentProofVersionHeader))
+	if proofVersion == "" {
+		return apiError(c, fiber.StatusConflict, "Open the current payment proof before verifying it")
+	}
 	now := time.Now()
-	if err := h.db.Model(&booking).Updates(map[string]any{"payment_status": "verified", "status": "confirmed", "verified_at": &now}).Error; err != nil {
+	result := h.db.Model(&models.Booking{}).
+		Where("id = ? AND payment_status = ? AND payment_proof_version = ?", booking.ID, "submitted", proofVersion).
+		Updates(map[string]any{"payment_status": "verified", "status": "confirmed", "verified_at": &now})
+	if result.Error != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to verify payment")
+	}
+	if result.RowsAffected != 1 {
+		return apiError(c, fiber.StatusConflict, "Payment proof changed; open the latest proof and verify again")
 	}
 	return c.JSON(fiber.Map{"message": "Payment verified and booking confirmed"})
 }
@@ -446,6 +522,9 @@ func (h *Handler) ViewPaymentProof(c *fiber.Ctx) error {
 	if booking.PaymentProofPath == "" {
 		return apiError(c, fiber.StatusNotFound, "Bukti pembayaran belum dikirim")
 	}
+	if booking.PaymentProofVersion == "" {
+		return apiError(c, fiber.StatusConflict, "Bukti pembayaran lama perlu dimigrasikan sebelum diverifikasi")
+	}
 	absolutePath, err := filepath.Abs(booking.PaymentProofPath)
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Bukti pembayaran tidak dapat dibuka")
@@ -453,9 +532,9 @@ func (h *Handler) ViewPaymentProof(c *fiber.Ctx) error {
 	if _, err := os.Stat(absolutePath); err != nil {
 		return apiError(c, fiber.StatusNotFound, "File bukti pembayaran tidak ditemukan")
 	}
+	c.Set(paymentProofVersionHeader, booking.PaymentProofVersion)
 	return c.SendFile(absolutePath)
 }
-
 
 func (h *Handler) DemoParseDrive(c *fiber.Ctx) error {
 	var req models.DriveFolderParseRequest
@@ -577,26 +656,7 @@ func (h *Handler) SubmitSelection(c *fiber.Ctx) error {
 		if err := tx.Where("gallery_id = ?", gallery.ID).Assign(selection).FirstOrCreate(&selection).Error; err != nil {
 			return err
 		}
-		// Update status galeri menjadi 'submitted'
-		if err := tx.Model(&models.Gallery{}).Where("id = ?", gallery.ID).Update("status", "submitted").Error; err != nil {
-			return err
-		}
-
-		// Otomatis tandai booking terkait sebagai terverifikasi & selesai
-		if gallery.BookingID != nil && *gallery.BookingID > 0 {
-			tx.Model(&models.Booking{}).Where("id = ?", *gallery.BookingID).Updates(map[string]interface{}{
-				"status":         "completed",
-				"payment_status": "verified",
-			})
-		}
-		if gallery.ClientName != "" {
-			cName := strings.TrimSpace(gallery.ClientName)
-			tx.Model(&models.Booking{}).Where("LOWER(full_name) = LOWER(?) OR LOWER(full_name) LIKE LOWER(?)", cName, "%"+cName+"%").Updates(map[string]interface{}{
-				"status":         "completed",
-				"payment_status": "verified",
-			})
-		}
-		return nil
+		return tx.Model(&models.Gallery{}).Where("id = ?", gallery.ID).Update("status", "submitted").Error
 	})
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to save selection")
@@ -607,16 +667,6 @@ func (h *Handler) SubmitSelection(c *fiber.Ctx) error {
 	var booking models.Booking
 	if gallery.BookingID != nil {
 		if err := h.db.Where("id = ?", *gallery.BookingID).First(&booking).Error; err == nil && booking.WhatsApp != "" {
-			wa = booking.WhatsApp
-		}
-	}
-	if wa == "" && gallery.ClientName != "" {
-		if err := h.db.Where("LOWER(full_name) = LOWER(?) OR LOWER(?) LIKE LOWER(CONCAT('%', full_name, '%')) OR LOWER(full_name) LIKE LOWER(CONCAT('%', ?, '%'))", gallery.ClientName, gallery.ClientName, gallery.ClientName).Order("created_at desc").First(&booking).Error; err == nil {
-			wa = booking.WhatsApp
-		}
-	}
-	if wa == "" && gallery.Title != "" {
-		if err := h.db.Where("LOWER(?) LIKE LOWER(CONCAT('%', full_name, '%'))", gallery.Title).Order("created_at desc").First(&booking).Error; err == nil {
 			wa = booking.WhatsApp
 		}
 	}
@@ -660,29 +710,26 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
 	}
 
-	// Gunakan transaksi dengan mematikan foreign key checks sementara agar dijamin 100% bisa terhapus
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		_ = tx.Exec("SET FOREIGN_KEY_CHECKS=0;").Error
-
-		// Cari semua galeri ID yang berhubungan
 		var galleryIDs []uint
-		tx.Table("galleries").Where("booking_id = ? OR (client_name != '' AND LOWER(client_name) = LOWER(?)) OR (title != '' AND LOWER(title) LIKE LOWER(CONCAT('%', ?, '%')))", booking.ID, booking.FullName, booking.FullName).Pluck("id", &galleryIDs)
-
-		if len(galleryIDs) > 0 {
-			tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Selection{})
-			tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Photo{})
-			tx.Where("id IN ?", galleryIDs).Delete(&models.Gallery{})
-		}
-
-		// Putuskan booking_id di tabel galleries jika masih ada
-		tx.Exec("UPDATE galleries SET booking_id = NULL WHERE booking_id = ?", booking.ID)
-
-		// Hapus booking
-		if err := tx.Unscoped().Where("id = ?", booking.ID).Delete(&models.Booking{}).Error; err != nil {
+		if err := tx.Model(&models.Gallery{}).Where("booking_id = ?", booking.ID).Pluck("id", &galleryIDs).Error; err != nil {
 			return err
 		}
 
-		_ = tx.Exec("SET FOREIGN_KEY_CHECKS=1;").Error
+		if len(galleryIDs) > 0 {
+			if err := tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Selection{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("gallery_id IN ?", galleryIDs).Delete(&models.Photo{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", galleryIDs).Delete(&models.Gallery{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Unscoped().Where("id = ?", booking.ID).Delete(&models.Booking{}).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 
@@ -892,7 +939,7 @@ func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"path":    "/uploads/portfolios/" + filename,
+		"path": "/uploads/portfolios/" + filename,
 	})
 }
 
@@ -932,7 +979,7 @@ func (h *Handler) ToggleReviewApproval(c *fiber.Ctx) error {
 	if err := h.db.First(&review, id).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Review not found"})
 	}
-	
+
 	// Toggle the is_approved flag
 	if err := h.db.Model(&review).Update("is_approved", !review.IsApproved).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to update review status"})
@@ -947,7 +994,3 @@ func (h *Handler) DeleteReview(c *fiber.Ctx) error {
 	}
 	return c.SendStatus(204)
 }
-
-
-
-

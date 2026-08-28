@@ -60,3 +60,6 @@ desktop.ini
 dist/
 coverage/
 *.tsbuildinfo
+
+# Database exports may contain client data and password hashes.
+*.sql

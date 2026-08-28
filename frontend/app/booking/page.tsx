@@ -25,6 +25,7 @@ function BookingFlow() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [booking, setBooking] = useState<BookingItem | null>(null);
+  const [bookingAccessToken, setBookingAccessToken] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [proof, setProof] = useState<File | null>(null);
@@ -68,6 +69,8 @@ function BookingFlow() {
           setPaymentMethod(parsed.paymentMethod || '');
           if (parsed.paymentExpiresAt) setPaymentExpiresAt(parsed.paymentExpiresAt);
           if (parsed.timestamp) setSessionTimestamp(parsed.timestamp);
+          if (parsed.booking) setBooking(parsed.booking);
+          if (parsed.bookingAccessToken) setBookingAccessToken(parsed.bookingAccessToken);
         }
       } catch (e) {
         console.error('Gagal memuat data booking:', e);
@@ -81,12 +84,44 @@ function BookingFlow() {
     if (!mounted) return;
     if (step < 4) {
       localStorage.setItem('kleiora_booking_state', JSON.stringify({
-        step, selectedCode, form, paymentMethod, paymentExpiresAt, timestamp: sessionTimestamp
+        step, selectedCode, form, paymentMethod, paymentExpiresAt, booking, bookingAccessToken, timestamp: sessionTimestamp
       }));
     } else {
       localStorage.removeItem('kleiora_booking_state');
     }
-  }, [step, selectedCode, form, paymentMethod, timeLeft, sessionTimestamp, mounted]);
+  }, [step, selectedCode, form, paymentMethod, paymentExpiresAt, booking, bookingAccessToken, sessionTimestamp, mounted]);
+
+  useEffect(() => {
+    if (!mounted || !window.location.hash) return;
+    const recovery = new URLSearchParams(window.location.hash.slice(1));
+    const code = recovery.get('code');
+    const accessToken = recovery.get('token');
+    if (!code || !accessToken) return;
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    apiRequest<BookingItem>(`/bookings/${encodeURIComponent(code)}`, { headers: { 'X-Booking-Token': accessToken } })
+      .then(existing => {
+        const now = Date.now();
+        setBooking(existing);
+        setBookingAccessToken(accessToken);
+        setSelectedCode(existing.package.code);
+        setForm({
+          full_name: existing.full_name,
+          campus_name: existing.campus_name,
+          whatsapp: existing.whatsapp,
+          session_date: existing.session_date,
+          session_hour: existing.session_hour,
+          session_location: existing.session_location,
+          payment_type: existing.payment_type,
+          notes: existing.notes || '',
+          custom_dp_amount: existing.payment_type === 'dp_custom' ? existing.amount_due : 0,
+        });
+        setPaymentMethod(existing.payment_method || '');
+        setPaymentExpiresAt(now + 30 * 60 * 1000);
+        setSessionTimestamp(now);
+        setStep(3);
+      })
+      .catch(err => setError(err instanceof Error ? err.message : 'Link akses booking tidak valid.'));
+  }, [mounted]);
 
   useEffect(() => {
     if (!paymentExpiresAt || step === 4) return;
@@ -98,6 +133,8 @@ function BookingFlow() {
         setStep(1);
         setError('Waktu pembayaran habis. Silakan ulangi proses booking.');
         setPaymentExpiresAt(null);
+        setBooking(null);
+        setBookingAccessToken('');
         return false;
       }
       setTimeLeft(remaining);
@@ -156,12 +193,12 @@ function BookingFlow() {
   useEffect(() => {
     if (!form.session_date) { setSlots([]); return; }
     setSlotsLoading(true);
-    setForm(current => ({ ...current, session_hour: '' }));
+    if (!booking) setForm(current => ({ ...current, session_hour: '' }));
     apiRequest<{ slots: Slot[] }>(`/availability?date=${form.session_date}`)
       .then(data => setSlots(data.slots))
       .catch(err => setError(err.message))
       .finally(() => setSlotsLoading(false));
-  }, [form.session_date]);
+  }, [form.session_date, booking]);
 
   const selectedPackage = useMemo(() => packages.find(pkg => pkg.code === selectedCode), [packages, selectedCode]);
 
@@ -199,14 +236,21 @@ function BookingFlow() {
       setError('');
     setSubmitting(true);
     try {
-      const result = await apiRequest<{ booking: BookingItem }>('/bookings', { method: 'POST', body: JSON.stringify({ ...form, payment_method: paymentMethod, package_code: selectedCode }) });
-      setBooking(result.booking);
+      let activeBooking = booking;
+      let activeAccessToken = bookingAccessToken;
+      if (!activeBooking || !activeAccessToken) {
+        const result = await apiRequest<{ booking: BookingItem; access_token: string }>('/bookings', { method: 'POST', body: JSON.stringify({ ...form, payment_method: paymentMethod, package_code: selectedCode }) });
+        activeBooking = result.booking;
+        activeAccessToken = result.access_token;
+        setBooking(activeBooking);
+        setBookingAccessToken(activeAccessToken);
+      }
       
       if (proof && requiresProof) {
         const body = new FormData();
         body.append('proof', proof);
         body.append('payment_method', paymentMethod);
-        await apiRequest(`/bookings/${result.booking.code}/payment-proof`, { method: 'POST', body });
+        await apiRequest(`/bookings/${activeBooking.code}/payment-proof`, { method: 'POST', headers: { 'X-Booking-Token': activeAccessToken }, body });
         setProofSent(true);
       }
 

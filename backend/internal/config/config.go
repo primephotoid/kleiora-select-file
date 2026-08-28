@@ -13,6 +13,7 @@ type Config struct {
 	GoogleDriveAPIKey string
 	FrontendOrigin    string
 	UploadDir         string
+	PaymentProofDir   string
 	Environment       string
 }
 
@@ -47,6 +48,10 @@ func LoadConfig() *Config {
 	if uploadDir == "" {
 		uploadDir = "uploads"
 	}
+	paymentProofDir := os.Getenv("PAYMENT_PROOF_DIR")
+	if paymentProofDir == "" {
+		paymentProofDir = uploadDir + "/.private/payment-proofs"
+	}
 
 	environment := os.Getenv("APP_ENV")
 	if environment == "" {
@@ -60,6 +65,7 @@ func LoadConfig() *Config {
 		GoogleDriveAPIKey: apiKey,
 		FrontendOrigin:    frontendOrigin,
 		UploadDir:         uploadDir,
+		PaymentProofDir:   paymentProofDir,
 		Environment:       environment,
 	}
 }

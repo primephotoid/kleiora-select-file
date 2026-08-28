@@ -8,14 +8,15 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"kleiora-backend/internal/models"
 )
 
 // SendTelegramBookingNotification sends an alert to the Admin's Telegram when a new booking is created.
 func SendTelegramBookingNotification(booking models.Booking, packageName string) {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	chatID := os.Getenv("TELEGRAM_CHAT_ID")
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
 
 	if botToken == "" || chatID == "" {
 		log.Println("Telegram credentials not configured. Skipping notification.")
@@ -27,6 +28,8 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 	paymentTypeLabel := "Full Payment (Lunas)"
 	if booking.PaymentType == "dp" {
 		paymentTypeLabel = "Down Payment (Setengah Harga)"
+	} else if booking.PaymentType == "dp_custom" {
+		paymentTypeLabel = "Down Payment (Nominal Custom)"
 	}
 
 	notes := booking.Notes
@@ -68,9 +71,8 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 	)
 
 	payload := map[string]interface{}{
-		"chat_id":    chatID,
-		"text":       message,
-		"parse_mode": "Markdown",
+		"chat_id": chatID,
+		"text":    message,
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -79,7 +81,13 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 		return
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		log.Printf("Failed to prepare telegram request: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		log.Printf("Failed to send telegram message: %v\n", err)
 		return
@@ -108,8 +116,8 @@ func formatRupiah(amount int64) string {
 
 // SendTelegramGallerySelectionNotification sends an alert to the Admin's Telegram when a client submits their photo selection.
 func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection models.Selection, files []string, whatsapp string) {
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	chatID := os.Getenv("TELEGRAM_CHAT_ID")
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
 
 	if botToken == "" || chatID == "" {
 		log.Println("Telegram credentials not configured. Skipping notification.")
@@ -145,9 +153,8 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 	)
 
 	payload := map[string]interface{}{
-		"chat_id":    chatID,
-		"text":       message,
-		"parse_mode": "Markdown",
+		"chat_id": chatID,
+		"text":    message,
 	}
 
 	jsonPayload, err := json.Marshal(payload)
@@ -156,7 +163,13 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 		return
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		log.Printf("Failed to prepare telegram request: %v\n", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
 		log.Printf("Failed to send telegram message: %v\n", err)
 		return

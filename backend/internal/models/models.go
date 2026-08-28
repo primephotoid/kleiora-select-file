@@ -70,27 +70,29 @@ type Review struct {
 }
 
 type Booking struct {
-	ID               uint       `gorm:"primaryKey" json:"id"`
-	Code             string     `gorm:"size:191;uniqueIndex;not null" json:"code"`
-	PackageID        uint       `gorm:"not null;index" json:"package_id"`
-	Package          Package    `json:"package"`
-	FullName         string     `gorm:"size:191;not null" json:"full_name"`
-	CampusName       string     `gorm:"size:191;not null" json:"campus_name"`
-	WhatsApp         string     `gorm:"size:32;not null" json:"whatsapp"`
-	SessionDate      string     `gorm:"size:10;not null;index:idx_booking_slot" json:"session_date"`
-	SessionHour      string     `gorm:"size:5;not null;index:idx_booking_slot" json:"session_hour"`
-	SessionLocation  string     `gorm:"size:255;not null" json:"session_location"`
-	PaymentType      string     `gorm:"size:32;not null;default:'full'" json:"payment_type"`
-	AmountDue        int64      `gorm:"not null" json:"amount_due"`
-	PaymentMethod    string     `gorm:"size:64" json:"payment_method,omitempty"`
-	PaymentProofPath string     `gorm:"size:512" json:"-"`
-	PaymentStatus    string     `gorm:"size:32;not null;default:'pending'" json:"payment_status"`
-	Status           string     `gorm:"size:32;not null;default:'pending_payment';index" json:"status"`
-	Notes            string     `gorm:"type:text" json:"notes,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	VerifiedAt       *time.Time `json:"verified_at,omitempty"`
-	Gallery          *Gallery   `gorm:"foreignKey:BookingID" json:"gallery,omitempty"`
+	ID                  uint       `gorm:"primaryKey" json:"id"`
+	Code                string     `gorm:"size:191;uniqueIndex;not null" json:"code"`
+	PackageID           uint       `gorm:"not null;index" json:"package_id"`
+	Package             Package    `json:"package"`
+	FullName            string     `gorm:"size:191;not null" json:"full_name"`
+	CampusName          string     `gorm:"size:191;not null" json:"campus_name"`
+	WhatsApp            string     `gorm:"size:32;not null" json:"whatsapp"`
+	SessionDate         string     `gorm:"size:10;not null;index:idx_booking_slot" json:"session_date"`
+	SessionHour         string     `gorm:"size:5;not null;index:idx_booking_slot" json:"session_hour"`
+	SessionLocation     string     `gorm:"size:255;not null" json:"session_location"`
+	PaymentType         string     `gorm:"size:32;not null;default:'full'" json:"payment_type"`
+	AmountDue           int64      `gorm:"not null" json:"amount_due"`
+	PaymentMethod       string     `gorm:"size:64" json:"payment_method,omitempty"`
+	PaymentProofPath    string     `gorm:"size:512" json:"-"`
+	PaymentProofVersion string     `gorm:"size:64" json:"-"`
+	AccessTokenHash     string     `gorm:"size:64" json:"-"`
+	PaymentStatus       string     `gorm:"size:32;not null;default:'pending'" json:"payment_status"`
+	Status              string     `gorm:"size:32;not null;default:'pending_payment';index" json:"status"`
+	Notes               string     `gorm:"type:text" json:"notes,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	VerifiedAt          *time.Time `json:"verified_at,omitempty"`
+	Gallery             *Gallery   `gorm:"foreignKey:BookingID" json:"gallery,omitempty"`
 }
 
 type Photo struct {

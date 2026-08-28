@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState('');
+  const [proofVersions, setProofVersions] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<DashboardTab>('bookings');
@@ -86,8 +87,8 @@ export default function DashboardPage() {
   const isGalleryActive = (g: GalleryItem) => g.status === 'active' && (!g.selection || !g.selection.total_selected);
 
   const stats = useMemo(() => {
-    const completedCount = bookings.filter(item => item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection).length;
-    const confirmedCount = bookings.filter(item => (item.status === 'confirmed' || item.payment_status === 'verified') && !(item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection)).length;
+    const completedCount = bookings.filter(item => item.status === 'completed').length;
+    const confirmedCount = bookings.filter(item => (item.status === 'confirmed' || item.payment_status === 'verified') && item.status !== 'completed').length;
     return {
       total: bookings.length,
       needsAction: bookings.filter(item => item.payment_status === 'submitted' && item.status !== 'completed').length,
@@ -100,7 +101,7 @@ export default function DashboardPage() {
   const filteredBookings = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return bookings.filter(item => {
-      const isCompleted = item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection;
+      const isCompleted = item.status === 'completed';
       const matchesFilter = filter === 'all' ||
         (filter === 'needs_action' && item.payment_status === 'submitted' && !isCompleted) ||
         (filter === 'confirmed' && (item.status === 'confirmed' || item.payment_status === 'verified') && !isCompleted) ||
@@ -113,7 +114,10 @@ export default function DashboardPage() {
   async function verify(code: string) {
     setProcessing(code); setError('');
     try {
-      await apiRequest(`/studio/bookings/${code}/verify-payment`, { method: 'PATCH', headers: authHeaders() });
+      const proofVersion = proofVersions[code];
+      if (!proofVersion) throw new Error('Buka bukti pembayaran terbaru sebelum melakukan verifikasi.');
+      await apiRequest(`/studio/bookings/${code}/verify-payment`, { method: 'PATCH', headers: { ...authHeaders(), 'X-Payment-Proof-Version': proofVersion } });
+      setProofVersions(current => { const next = { ...current }; delete next[code]; return next; });
       await load(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Verifikasi gagal.'); }
     finally { setProcessing(''); }
@@ -124,6 +128,9 @@ export default function DashboardPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/studio/bookings/${code}/payment-proof`, { credentials: 'include', headers: authHeaders() });
       if (!response.ok) throw new Error('Bukti pembayaran tidak dapat dibuka.');
+      const proofVersion = response.headers.get('X-Payment-Proof-Version');
+      if (!proofVersion) throw new Error('Versi bukti pembayaran tidak tersedia. Muat ulang data dan coba lagi.');
+      setProofVersions(current => ({ ...current, [code]: proofVersion }));
       const url = URL.createObjectURL(await response.blob());
       window.open(url, '_blank', 'noopener,noreferrer');
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
@@ -348,7 +355,7 @@ export default function DashboardPage() {
 function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
   const hasGallery = !!item.gallery;
-  const isCompleted = item.status === 'completed' || item.gallery?.status === 'submitted' || !!item.gallery?.selection;
+  const isCompleted = item.status === 'completed';
 
   const handleSendReceipt = () => {
     const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -363,7 +370,7 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
     window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  return <article className="rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:border-[#d4c4ac] hover:shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.3fr_1fr_1fr_auto] lg:items-center"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{item.full_name}</h2><Status value={isCompleted ? 'completed' : item.payment_status} /></div><p className="mt-1 text-xs text-[var(--muted)]">{item.campus_name} · <span className="font-mono">{item.code}</span></p><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><MessageCircle className="h-3.5 w-3.5" />{item.whatsapp}</a></div><div className="space-y-2 text-sm"><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]" />{formatDate(item.session_date)} · {item.session_hour}.00</p><p className="flex items-center gap-2 text-xs text-[var(--muted)]"><MapPin className="h-3.5 w-3.5" />{item.session_location}</p></div><div><p className="text-sm font-semibold">{item.package.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : 'Lunas'} · {formatRupiah(item.amount_due)}</p></div><div className="flex flex-wrap gap-2 lg:w-44 lg:flex-col">{item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs">{processing === `proof-${item.code}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing === item.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Verifikasi</button></>}{isCompleted ? <><span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Selesai</span>{hasGallery && <button onClick={handleSendGallery} className="btn-secondary flex-1 px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button>}</> : hasGallery ? <><button onClick={handleSendGallery} className="btn-secondary flex-1 px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs text-emerald-700 border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Tandai selesai</button></> : item.status === 'confirmed' ? <><button onClick={handleSendReceipt} className="btn-secondary flex-1 px-3 py-2 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"><MessageCircle className="h-3.5 w-3.5" />Kirim Resi WA</button><button onClick={onCreateGallery} className="btn-secondary flex-1 px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button></> : item.payment_status === 'pending' ? <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span> : null}<button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button></div></div></article>;
+  return <article className="rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:border-[#d4c4ac] hover:shadow-sm"><div className="grid gap-5 lg:grid-cols-[1.3fr_1fr_1fr_auto] lg:items-center"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{item.full_name}</h2><Status value={isCompleted ? 'completed' : item.payment_status} /></div><p className="mt-1 text-xs text-[var(--muted)]">{item.campus_name} · <span className="font-mono">{item.code}</span></p><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><MessageCircle className="h-3.5 w-3.5" />{item.whatsapp}</a></div><div className="space-y-2 text-sm"><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]" />{formatDate(item.session_date)} · {item.session_hour}.00</p><p className="flex items-center gap-2 text-xs text-[var(--muted)]"><MapPin className="h-3.5 w-3.5" />{item.session_location}</p></div><div><p className="text-sm font-semibold">{item.package.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : item.payment_type === 'dp_custom' ? 'DP Custom' : 'Lunas'} · {formatRupiah(item.amount_due)}</p></div><div className="flex flex-wrap gap-2 lg:w-44 lg:flex-col">{item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs">{processing === `proof-${item.code}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing === item.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Verifikasi</button></>}{isCompleted ? <><span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Selesai</span>{hasGallery && <button onClick={handleSendGallery} className="btn-secondary flex-1 px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button>}</> : hasGallery ? <><button onClick={handleSendGallery} className="btn-secondary flex-1 px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className="btn-secondary flex-1 px-3 py-2 text-xs text-emerald-700 border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Tandai selesai</button></> : item.status === 'confirmed' ? <><button onClick={handleSendReceipt} className="btn-secondary flex-1 px-3 py-2 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"><MessageCircle className="h-3.5 w-3.5" />Kirim Resi WA</button><button onClick={onCreateGallery} className="btn-secondary flex-1 px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button></> : item.payment_status === 'pending' ? <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span> : null}<button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex flex-1 items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button></div></div></article>;
 }
 
 function GalleryCard({ gallery, copied, onCopy, onDelete }: { gallery: GalleryItem; copied: boolean; onCopy: () => void; onDelete: () => void }) {

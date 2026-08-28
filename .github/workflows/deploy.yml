@@ -25,6 +25,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Reject tracked database exports
+        run: |
+          if test -n "$(git ls-files '*.sql')"; then
+            echo "Operational SQL exports must not be committed" >&2
+            git ls-files '*.sql' >&2
+            exit 1
+          fi
+
       - name: Setup Node.js (Frontend)
         uses: actions/setup-node@v4
         with:
@@ -113,6 +121,14 @@ jobs:
               echo "Backend environment file /opt/kleiora/.env was not found or is not readable" >&2
               exit 1
             }
+            grep -Eq '^TELEGRAM_BOT_TOKEN=.+$' /opt/kleiora/.env || {
+              echo "TELEGRAM_BOT_TOKEN is missing or empty in /opt/kleiora/.env" >&2
+              exit 1
+            }
+            grep -Eq '^TELEGRAM_CHAT_ID=.+$' /opt/kleiora/.env || {
+              echo "TELEGRAM_CHAT_ID is missing or empty in /opt/kleiora/.env" >&2
+              exit 1
+            }
 
             echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
@@ -134,7 +150,10 @@ jobs:
               -e APP_ENV="production" \
               -e FRONTEND_ORIGIN="${{ env.FRONTEND_ORIGIN }}" \
               -e UPLOAD_DIR="uploads" \
+              -e PAYMENT_PROOF_DIR="uploads/.private/payment-proofs" \
               "${{ secrets.DOCKER_USERNAME }}/kleiora_backend:latest"
+
+            docker exec kleiora_backend sh -c 'test -n "$TELEGRAM_BOT_TOKEN" && test -n "$TELEGRAM_CHAT_ID"'
 
             docker run -d \
               --name kleiora_frontend \
