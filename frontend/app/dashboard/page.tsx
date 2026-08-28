@@ -761,7 +761,8 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
   const [uploadError, setUploadError] = useState('');
   // Queue of files to crop (for multi-upload)
   const [cropQueue, setCropQueue] = useState<{ src: string; name: string }[]>([]);
-  const [croppedPaths, setCroppedPaths] = useState<string[]>([]);
+  // Use ref instead of state to avoid stale closure when accumulating paths
+  const accumulatedPathsRef = useRef<string[]>([]);
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -775,8 +776,8 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const queue = Array.from(files).map(f => ({ src: URL.createObjectURL(f), name: f.name }));
+    accumulatedPathsRef.current = [];
     setCropQueue(queue);
-    setCroppedPaths([]);
     e.target.value = '';
   };
 
@@ -792,17 +793,18 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     try {
       const token = localStorage.getItem('kleiora_token') || '';
       const res = await uploadPortfolioImage(croppedFile, token);
-      const newPaths = [...croppedPaths, res.path];
-      setCroppedPaths(newPaths);
-      // If no more in queue, update form
+      // Push to ref — always fresh, no stale closure
+      accumulatedPathsRef.current = [...accumulatedPathsRef.current, res.path];
+      // If no more in queue, commit all paths to form
       if (remaining.length === 0) {
-        setForm((prev: PortfolioItem) => ({ ...prev, image_path: newPaths.join(',') }));
-        setCroppedPaths([]);
+        setForm((prev: PortfolioItem) => ({ ...prev, image_path: accumulatedPathsRef.current.join(',') }));
+        accumulatedPathsRef.current = [];
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Gagal upload gambar');
       // Clear queue on error
       setCropQueue([]);
+      accumulatedPathsRef.current = [];
     } finally {
       setUploading(false);
     }
@@ -812,7 +814,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     // Cancel entire queue
     cropQueue.forEach(item => { if (item.src.startsWith('blob:')) URL.revokeObjectURL(item.src); });
     setCropQueue([]);
-    setCroppedPaths([]);
+    accumulatedPathsRef.current = [];
   };
 
   const imagePaths = form.image_path ? form.image_path.split(',') : [];
