@@ -78,6 +78,7 @@ func (s *DriveService) FetchPhotosFromFolder(ctx context.Context, folderID strin
 		remaining := int64(maxDrivePhotos - len(photos))
 		call := driveService.Files.List().
 			Q(query).
+			OrderBy("name_natural").
 			Fields("nextPageToken, files(id, name, mimeType, thumbnailLink, webContentLink, imageMediaMetadata)").
 			PageSize(remaining)
 		if pageToken != "" {

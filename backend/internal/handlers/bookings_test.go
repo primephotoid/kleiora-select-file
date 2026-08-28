@@ -338,13 +338,17 @@ func TestSubmitSelectionDoesNotVerifyOrCompleteBooking(t *testing.T) {
 	booking, _ := createBookingForTest(t, app, "Eka")
 	gallery := models.Gallery{
 		Slug: "secure-gallery", PhotographerID: 1, BookingID: &booking.ID,
-		DriveFolderID: "folder", Title: "Eka Gallery", ClientName: "Eka", MaxSelection: 1, Status: "active",
-		Photos: []models.Photo{{DriveFileID: "drive-1", FileName: "photo-1.jpg"}},
+		DriveFolderID: "folder", Title: "Eka Gallery", ClientName: "Eka", MaxSelection: 3, Status: "active",
+		Photos: []models.Photo{
+			{DriveFileID: "drive-10", FileName: "photo-10.jpg"},
+			{DriveFileID: "drive-2", FileName: "photo-2.jpg"},
+			{DriveFileID: "drive-1", FileName: "photo-1.jpg"},
+		},
 	}
 	if err := db.Create(&gallery).Error; err != nil {
 		t.Fatal(err)
 	}
-	body, _ := json.Marshal(map[string]any{"selected_files": []string{"drive-1"}})
+	body, _ := json.Marshal(map[string]any{"selected_files": []string{"drive-10", "drive-1", "drive-2"}})
 	request := httptest.NewRequest(http.MethodPost, "/galleries/secure-gallery/select", bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response, err := app.Test(request)
@@ -359,6 +363,13 @@ func TestSubmitSelectionDoesNotVerifyOrCompleteBooking(t *testing.T) {
 	}
 	if booking.PaymentStatus != "pending" || booking.Status != "pending_payment" {
 		t.Fatalf("selection changed booking state to %s/%s", booking.PaymentStatus, booking.Status)
+	}
+	var selection models.Selection
+	if err := db.Where("gallery_id = ?", gallery.ID).First(&selection).Error; err != nil {
+		t.Fatal(err)
+	}
+	if selection.SelectedFiles != `["photo-1.jpg","photo-2.jpg","photo-10.jpg"]` {
+		t.Fatalf("expected naturally sorted selected files, got %s", selection.SelectedFiles)
 	}
 }
 

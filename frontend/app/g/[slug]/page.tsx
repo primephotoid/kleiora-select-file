@@ -8,6 +8,8 @@ import { apiRequest } from '@/lib/api';
 interface PhotoItem { id: number; drive_file_id: string; file_name: string; thumbnail_url: string; view_url: string }
 interface Gallery { slug: string; title: string; client_name: string; max_selection: number; status: string; photos: PhotoItem[]; selection?: { selected_files: string; client_notes: string }; expires_at?: string }
 
+const photoNameCollator = new Intl.Collator('id-ID', { numeric: true, sensitivity: 'base' });
+
 function driveThumbnail(fileID: string) {
   return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileID)}=w600`;
 }
@@ -80,7 +82,9 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
       .finally(() => setLoading(false));
   }, [params.slug]);
 
-  const displayedPhotos = useMemo(() => (gallery?.photos ?? []).filter(photo => filter === 'all' || selectedIds.includes(photo.drive_file_id)), [gallery, filter, selectedIds]);
+  const displayedPhotos = useMemo(() => [...(gallery?.photos ?? [])]
+    .filter(photo => filter === 'all' || selectedIds.includes(photo.drive_file_id))
+    .sort((left, right) => photoNameCollator.compare(left.file_name, right.file_name) || left.id - right.id), [gallery, filter, selectedIds]);
 
   function toggleSelect(id: string) {
     if (timeLeft?.expired) {

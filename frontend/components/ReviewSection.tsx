@@ -9,11 +9,13 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
   const [form, setForm] = useState({ client_name: '', rating: 5, comment: '' });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
+    setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/reviews`, {
         method: 'POST',
@@ -29,10 +31,10 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
         }, 3000);
       } else {
         const err = await res.json();
-        alert(err.error || 'Gagal mengirim ulasan');
+        setError(err.error || 'Gagal mengirim ulasan');
       }
-    } catch (err) {
-      alert('Terjadi kesalahan koneksi');
+    } catch {
+      setError('Terjadi kesalahan koneksi. Silakan coba kembali.');
     } finally {
       setSubmitting(false);
     }
@@ -46,7 +48,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
             <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Testimoni</p>
             <h2 className="mt-3 font-serif text-4xl font-medium">Apa kata mereka?</h2>
           </div>
-          <button onClick={() => setShowForm(true)} className="btn-secondary px-6 py-3 text-sm">Tulis Ulasan</button>
+          <button onClick={() => { setError(''); setShowForm(true); }} className="btn-secondary px-6 py-3 text-sm">Tulis Ulasan</button>
         </div>
 
         {reviews.length > 0 ? (
@@ -95,6 +97,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
+                {error && <div role="alert" className="flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
                 <div>
                   <label className="mb-1.5 block text-xs font-bold text-gray-700">Nama Lengkap</label>
                   <input required value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface2)] px-4 py-3 text-sm focus:border-[var(--gold)] focus:outline-none focus:ring-2 focus:ring-[var(--gold-glow)]" placeholder="Tulis namamu..." />

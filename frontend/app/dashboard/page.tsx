@@ -9,6 +9,7 @@ import {
   ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
@@ -20,6 +21,7 @@ type BookingFilter = 'all' | 'needs_action' | 'confirmed' | 'completed';
 type BookingSort = 'created_at' | 'session_date' | 'full_name' | 'code' | 'amount_due';
 interface BookingMeta { page: number; per_page: number; total: number; total_pages: number }
 interface BookingSummary { total: number; needs_action: number; confirmed: number; completed: number }
+interface ConfirmationRequest { title: string; description: string; confirmLabel?: string; resolve: (confirmed: boolean) => void }
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
 const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true };
@@ -57,6 +59,17 @@ export default function DashboardPage() {
   const [pkgForm, setPkgForm] = useState<PackageItem>(emptyPackageForm as PackageItem);
   const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>(emptyPortfolioForm as PortfolioItem);
   const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+
+  function askConfirmation(options: Omit<ConfirmationRequest, 'resolve'>) {
+    return new Promise<boolean>(resolve => setConfirmation({ ...options, resolve }));
+  }
+
+  function resolveConfirmation(confirmed: boolean) {
+    const current = confirmation;
+    setConfirmation(null);
+    current?.resolve(confirmed);
+  }
 
   function authHeaders() {
     const token = localStorage.getItem('kleiora_token');
@@ -190,7 +203,7 @@ export default function DashboardPage() {
   }
 
   async function deleteGallery(id: number) {
-    if (!confirm('Apakah Anda yakin ingin menghapus galeri ini? Semua data pilihan akan ikut terhapus.')) return;
+    if (!await askConfirmation({ title: 'Hapus galeri?', description: 'Galeri beserta seluruh data pilihan foto klien akan dihapus permanen.', confirmLabel: 'Hapus galeri' })) return;
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/galleries/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -212,7 +225,7 @@ export default function DashboardPage() {
   }
 
   async function deletePackage(id: number) {
-    if (!confirm('Apakah Anda yakin ingin menghapus paket ini?')) return;
+    if (!await askConfirmation({ title: 'Hapus paket?', description: 'Paket akan dihapus dari dashboard dan tidak lagi tersedia untuk booking baru.', confirmLabel: 'Hapus paket' })) return;
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/packages/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -239,7 +252,7 @@ export default function DashboardPage() {
   }
 
   async function deletePortfolio(id: number) {
-    if (!confirm('Apakah Anda yakin ingin menghapus foto portfolio ini?')) return;
+    if (!await askConfirmation({ title: 'Hapus foto portofolio?', description: 'Foto ini akan dihapus dari portofolio dan tidak lagi tampil di halaman publik.', confirmLabel: 'Hapus foto' })) return;
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/portfolios/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -256,7 +269,7 @@ export default function DashboardPage() {
   }
 
   async function deleteReview(id: number) {
-    if (!confirm('Hapus ulasan ini permanen?')) return;
+    if (!await askConfirmation({ title: 'Hapus ulasan?', description: 'Ulasan ini akan dihapus permanen dan tidak lagi tampil di halaman publik.', confirmLabel: 'Hapus ulasan' })) return;
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/reviews/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -265,7 +278,7 @@ export default function DashboardPage() {
   }
 
   async function deleteBooking(code: string) {
-    if (!confirm(`Apakah Anda yakin ingin menghapus booking ${code}? Tindakan ini tidak dapat dibatalkan.`)) return;
+    if (!await askConfirmation({ title: 'Hapus booking?', description: `Booking ${code} beserta galeri yang terhubung akan dihapus permanen.`, confirmLabel: 'Hapus booking' })) return;
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/bookings/${code}`, { method: 'DELETE', headers: authHeaders() });
@@ -394,6 +407,7 @@ export default function DashboardPage() {
       {showCreate && <CreateGalleryModal form={form} setForm={setForm} bookings={bookings} creating={creating} onClose={() => !creating && setShowCreate(false)} onSubmit={createGallery} />}
       {showCreatePackage && <CreatePackageModal form={pkgForm} setForm={setPkgForm} creating={creating} onClose={() => !creating && setShowCreatePackage(false)} onSubmit={savePackage} />}
       {showCreatePortfolio && <CreatePortfolioModal form={portfolioForm} setForm={setPortfolioForm} creating={creating} onClose={() => !creating && setShowCreatePortfolio(false)} onSubmit={savePortfolio} />}
+      <ConfirmDialog open={!!confirmation} title={confirmation?.title || ''} description={confirmation?.description || ''} confirmLabel={confirmation?.confirmLabel} onCancel={() => resolveConfirmation(false)} onConfirm={() => resolveConfirmation(true)} />
       <style jsx global>{`.admin-field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.admin-field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}`}</style>
     </div>
   );
@@ -510,7 +524,7 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
 function GalleryCard({ gallery, copied, onCopy, onDelete }: { gallery: GalleryItem; copied: boolean; onCopy: () => void; onDelete: () => void }) {
   const count = gallery.photos?.length || 0; const selected = gallery.selection?.total_selected || 0;
   const photo = gallery.photos && gallery.photos.length > 0 ? gallery.photos[0] : null;
-  return <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative"><button onClick={onDelete} className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Galeri"><Trash className="h-4 w-4" /></button><div className="flex h-28 items-center justify-center bg-[var(--surface2)] overflow-hidden">{photo ? <img src={`https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.drive_file_id)}=w600`} alt="Thumbnail" className="h-full w-full object-cover" /> : <Images className="h-8 w-8 text-[var(--gold-dark)]" />}</div><div className="p-5"><div className="flex items-start justify-between gap-3"><div><Status value={gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div><div className="mt-5"><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--muted)]">Pilihan klien</span><strong>{selected} / {gallery.max_selection || '∞'}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface2)]"><div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${gallery.max_selection ? Math.min(100, selected / gallery.max_selection * 100) : 0}%` }} /></div></div><div className="mt-5 flex gap-2"><Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link><button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button></div></div></article>;
+  return <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative"><button onClick={onDelete} className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus galeri"><Trash className="h-4 w-4" /></button><div className="flex h-28 items-center justify-center bg-[var(--surface2)] overflow-hidden">{photo ? <img src={`https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.drive_file_id)}=w600`} alt="Thumbnail" className="h-full w-full object-cover" /> : <Images className="h-8 w-8 text-[var(--gold-dark)]" />}</div><div className="p-5"><div className="flex items-start justify-between gap-3"><div><Status value={gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div><div className="mt-5"><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--muted)]">Pilihan klien</span><strong>{selected} / {gallery.max_selection || '∞'}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface2)]"><div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${gallery.max_selection ? Math.min(100, selected / gallery.max_selection * 100) : 0}%` }} /></div></div><div className="mt-5 flex gap-2"><Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link><button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button></div></div></article>;
 }
 
 function CreateGalleryModal({ form, setForm, bookings, creating, onClose, onSubmit }: { form: typeof emptyGalleryForm; setForm: React.Dispatch<React.SetStateAction<typeof emptyGalleryForm>>; bookings: BookingItem[]; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
@@ -530,8 +544,8 @@ function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () =
   return (
     <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative flex flex-col">
       <div className="absolute right-3 top-3 z-10 flex gap-2">
-        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" title="Edit Paket"><Edit2 className="h-4 w-4" /></button>
-        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Paket"><Trash className="h-4 w-4" /></button>
+        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" aria-label="Edit paket"><Edit2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus paket"><Trash className="h-4 w-4" /></button>
       </div>
       <div className="flex h-32 items-center justify-center bg-[var(--surface2)] overflow-hidden">
         {pkg.image_path ? <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="h-full w-full object-cover" /> : <PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" />}
@@ -554,6 +568,7 @@ function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () =
 function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { form: PackageItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
   const [uploading, setUploading] = useState(false);
   const [localPreview, setLocalPreview] = useState('');
+  const [uploadError, setUploadError] = useState('');
 
   useEffect(() => {
     return () => {
@@ -566,6 +581,7 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
     if (!file) return;
     const preview = URL.createObjectURL(file);
     setLocalPreview(preview);
+    setUploadError('');
     setUploading(true);
     try {
       const token = localStorage.getItem('kleiora_token') || '';
@@ -573,7 +589,7 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
       setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
     } catch (err) {
       setLocalPreview('');
-      alert(err instanceof Error ? err.message : 'Gagal upload gambar');
+      setUploadError(err instanceof Error ? err.message : 'Gagal upload gambar');
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -590,6 +606,7 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
           </div>
           <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
         </div>
+        {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
         
         <div className="mt-7 grid gap-4 sm:grid-cols-2">
           <Field label="Nama Paket"><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="admin-field" placeholder="Contoh: Personal Package" /></Field>
@@ -653,8 +670,8 @@ function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioIt
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-[var(--line)] bg-white">
       <div className="absolute right-3 top-3 z-10 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" title="Edit Portofolio"><Edit2 className="h-4 w-4" /></button>
-        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" title="Hapus Portofolio"><Trash className="h-4 w-4" /></button>
+        <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" aria-label="Edit portofolio"><Edit2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus portofolio"><Trash className="h-4 w-4" /></button>
       </div>
       <div className="aspect-[3/4] w-full bg-[var(--surface2)]">
         {portfolio.image_path ? (
@@ -675,11 +692,13 @@ function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioIt
 
 function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { form: PortfolioItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
+    setUploadError('');
     try {
       const token = localStorage.getItem('kleiora_token') || '';
       const paths = [];
@@ -689,7 +708,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
       }
       setForm({ ...form, image_path: paths.join(',') });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Gagal upload gambar');
+      setUploadError(err instanceof Error ? err.message : 'Gagal upload gambar');
     } finally {
       setUploading(false);
     }
@@ -707,6 +726,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
           </div>
           <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
         </div>
+        {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
         
         <div className="mt-7 space-y-4">
           <div className="p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">

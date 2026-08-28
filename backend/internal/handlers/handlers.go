@@ -766,6 +766,7 @@ func (h *Handler) SubmitSelection(c *fiber.Ctx) error {
 			files = append(files, name)
 		}
 	}
+	files = services.SortFileNamesNatural(files)
 	jsonBytes, err := json.Marshal(files)
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to encode selection")

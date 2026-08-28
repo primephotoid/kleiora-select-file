@@ -127,7 +127,7 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
 
 	fileList := ""
-	for _, f := range files {
+	for _, f := range SortFileNamesNatural(files) {
 		fileList += "- " + f + "\n"
 	}
 
