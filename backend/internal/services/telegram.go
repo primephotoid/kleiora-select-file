@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -124,61 +126,90 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 		return
 	}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
-
-	fileList := ""
-	for _, f := range SortFileNamesNatural(files) {
-		fileList += "- " + f + "\n"
-	}
-
 	waText := whatsapp
 	if waText == "" {
 		waText = "-"
 	}
 
-	message := fmt.Sprintf(
-		"● *Pilihan Foto Baru Diterima!*\n\n"+
-			"*Klien:* %s\n"+
-			"*WhatsApp:* %s\n"+
-			"*Galeri:* %s\n"+
-			"*Total Dipilih:* %d foto\n"+
-			"*Catatan Klien:* %s\n\n"+
-			"*Daftar File:*\n%s",
-		gallery.ClientName,
-		waText,
-		gallery.Title,
-		selection.TotalSelected,
-		selection.ClientNotes,
-		fileList,
+	messages := buildGallerySelectionMessages(gallery, selection, files, waText)
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
+	for _, message := range messages {
+		if err := postTelegramHTMLMessage(endpoint, chatID, message); err != nil {
+			log.Printf("Failed to send gallery selection notification: %v\n", err)
+			return
+		}
+	}
+	log.Println("Telegram notification sent for gallery selection:", gallery.Slug)
+}
+
+func buildGallerySelectionMessages(gallery models.Gallery, selection models.Selection, files []string, whatsapp string) []string {
+	notes := selection.ClientNotes
+	if strings.TrimSpace(notes) == "" {
+		notes = "-"
+	}
+	summary := fmt.Sprintf(
+		"● <b>Pilihan Foto Baru Diterima!</b>\n\n"+
+			"<b>Klien:</b> %s\n"+
+			"<b>WhatsApp:</b> %s\n"+
+			"<b>Galeri:</b> %s\n"+
+			"<b>Total Dipilih:</b> %d foto\n"+
+			"<b>Catatan Klien:</b> %s\n"+
+			"<b>Folder Drive:</b> <a href=\"https://drive.google.com/drive/folders/%s\">Buka folder</a>",
+		html.EscapeString(gallery.ClientName), html.EscapeString(whatsapp), html.EscapeString(gallery.Title),
+		selection.TotalSelected, html.EscapeString(notes), url.QueryEscape(gallery.DriveFolderID),
 	)
 
-	payload := map[string]interface{}{
-		"chat_id": chatID,
-		"text":    message,
+	fileIDs := make(map[string]string, len(gallery.Photos))
+	for _, photo := range gallery.Photos {
+		fileIDs[photo.FileName] = photo.DriveFileID
 	}
 
+	const telegramSafeLimit = 3800
+	const listHeader = "● <b>Download Foto Pilihan</b>\n\n"
+	messages := []string{summary}
+	current := listHeader
+	for index, fileName := range SortFileNamesNatural(files) {
+		label := html.EscapeString(fileName)
+		line := fmt.Sprintf("%d. %s\n", index+1, label)
+		if fileID := fileIDs[fileName]; fileID != "" {
+			downloadURL := "https://drive.google.com/uc?export=download&amp;id=" + url.QueryEscape(fileID)
+			line = fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", index+1, downloadURL, label)
+		}
+		if len(current)+len(line) > telegramSafeLimit && current != listHeader {
+			messages = append(messages, current)
+			current = listHeader
+		}
+		current += line
+	}
+	if current != listHeader {
+		messages = append(messages, current)
+	}
+	return messages
+}
+
+func postTelegramHTMLMessage(endpoint, chatID, message string) error {
+	payload := map[string]interface{}{
+		"chat_id":                  chatID,
+		"text":                     message,
+		"parse_mode":               "HTML",
+		"disable_web_page_preview": true,
+	}
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Failed to marshal telegram payload: %v\n", err)
-		return
+		return fmt.Errorf("marshal telegram payload: %w", err)
 	}
-
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonPayload))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		log.Printf("Failed to prepare telegram request: %v\n", err)
-		return
+		return fmt.Errorf("prepare telegram request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
 	if err != nil {
-		log.Printf("Failed to send telegram message: %v\n", err)
-		return
+		return fmt.Errorf("send telegram request: %w", err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Telegram API returned non-OK status: %d\n", resp.StatusCode)
-	} else {
-		log.Println("Telegram notification sent for gallery selection:", gallery.Slug)
+		return fmt.Errorf("telegram API returned status %d", resp.StatusCode)
 	}
+	return nil
 }
