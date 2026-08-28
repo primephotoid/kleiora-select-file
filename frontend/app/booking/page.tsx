@@ -29,6 +29,8 @@ function BookingFlow() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [proof, setProof] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState('');
+  const [processingProof, setProcessingProof] = useState(false);
   const [proofSent, setProofSent] = useState(false);
   const [form, setForm] = useState({ full_name: '', campus_name: '', whatsapp: '', session_date: '', session_hour: '', session_location: '', payment_type: 'full', notes: '', custom_dp_amount: 0 });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -39,6 +41,16 @@ function BookingFlow() {
   const [copiedText, setCopiedText] = useState('');
 
   const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    if (!proof) {
+      setProofPreview('');
+      return;
+    }
+    const previewURL = URL.createObjectURL(proof);
+    setProofPreview(previewURL);
+    return () => URL.revokeObjectURL(previewURL);
+  }, [proof]);
 
   async function copyToClipboard(text: string) {
     try {
@@ -553,15 +565,27 @@ function BookingFlow() {
                   
                   <div className="mt-6">
                     <h3 className="mb-3 flex items-center gap-2 font-bold"><Upload className="h-5 w-5" /> Upload Bukti Pembayaran / Transaksi</h3>
-                    <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--line)] p-8 text-center transition-colors hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]">
-                      <ImageIcon className="mb-3 h-8 w-8 text-[var(--muted)]" />
-                      <span className="text-sm font-semibold text-[var(--text)]">{proof ? proof.name : 'Pilih foto bukti pembayaran (.jpg, .png, .webp)'}</span>
+                    <label className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--line)] text-center transition-colors hover:border-[var(--gold)] hover:bg-[var(--gold-glow)] ${proofPreview ? 'p-4' : 'p-8'}`}>
+                      {proofPreview ? <>
+                        <div className="relative flex max-h-72 w-full items-center justify-center overflow-hidden rounded-xl bg-black/5">
+                          <img src={proofPreview} alt="Preview bukti pembayaran" className="max-h-72 w-full object-contain" />
+                          <span className="absolute right-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur">Klik untuk ganti</span>
+                        </div>
+                        <span className="mt-3 max-w-full truncate text-sm font-semibold text-[var(--text)]">{proof?.name}</span>
+                      </> : processingProof ? <>
+                        <Loader2 className="mb-3 h-8 w-8 animate-spin text-[var(--gold-dark)]" />
+                        <span className="text-sm font-semibold text-[var(--text)]">Memproses gambar...</span>
+                      </> : <>
+                        <ImageIcon className="mb-3 h-8 w-8 text-[var(--muted)]" />
+                        <span className="text-sm font-semibold text-[var(--text)]">Pilih foto bukti pembayaran (.jpg, .png, .webp)</span>
+                      </>}
                       <span className="mt-1 text-xs text-[var(--muted)]">Maksimal ukuran file: 5MB</span>
                       <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={async e => {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         setError('');
                         setProof(null);
+                        setProcessingProof(true);
                         try {
                           const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
                           const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true, fileType: outputType });
@@ -573,6 +597,9 @@ function BookingFlow() {
                           console.error(err);
                           setProof(null);
                           setError('Foto bukti tidak dapat diproses. Gunakan JPG, PNG, atau WEBP yang valid.');
+                        } finally {
+                          setProcessingProof(false);
+                          e.target.value = '';
                         }
                       }} />
                     </label>
