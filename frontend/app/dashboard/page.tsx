@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState('');
   const [proofVersions, setProofVersions] = useState<Record<string, string>>({});
+  const [paymentProofPreview, setPaymentProofPreview] = useState<{ code: string; url: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<DashboardTab>('bookings');
@@ -155,6 +156,12 @@ export default function DashboardPage() {
     loadBookings(true);
   }, [bookingPage, bookingPerPage, debouncedSearch, filter, bookingSort, bookingSortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    return () => {
+      if (paymentProofPreview?.url) URL.revokeObjectURL(paymentProofPreview.url);
+    };
+  }, [paymentProofPreview]);
+
   const isGalleryActive = (g: GalleryItem) => g.status === 'active' && (!g.selection || !g.selection.total_selected);
   const isGalleryVisible = (g: GalleryItem) => g.status !== 'archived';
 
@@ -189,8 +196,7 @@ export default function DashboardPage() {
       if (!proofVersion) throw new Error('Versi bukti pembayaran tidak tersedia. Muat ulang data dan coba lagi.');
       setProofVersions(current => ({ ...current, [code]: proofVersion }));
       const url = URL.createObjectURL(await response.blob());
-      window.open(url, '_blank', 'noopener,noreferrer');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setPaymentProofPreview({ code, url });
     } catch (err) { setError(err instanceof Error ? err.message : 'Bukti pembayaran tidak dapat dibuka.'); }
     finally { setProcessing(''); }
   }
@@ -410,10 +416,34 @@ export default function DashboardPage() {
       {showCreate && <CreateGalleryModal form={form} setForm={setForm} bookings={bookings} creating={creating} onClose={() => !creating && setShowCreate(false)} onSubmit={createGallery} />}
       {showCreatePackage && <CreatePackageModal form={pkgForm} setForm={setPkgForm} creating={creating} onClose={() => !creating && setShowCreatePackage(false)} onSubmit={savePackage} />}
       {showCreatePortfolio && <CreatePortfolioModal form={portfolioForm} setForm={setPortfolioForm} creating={creating} onClose={() => !creating && setShowCreatePortfolio(false)} onSubmit={savePortfolio} />}
+      {paymentProofPreview && <PaymentProofModal code={paymentProofPreview.code} url={paymentProofPreview.url} processing={processing} onClose={() => setPaymentProofPreview(null)} onVerify={() => { const code = paymentProofPreview.code; setPaymentProofPreview(null); verify(code); }} />}
       <ConfirmDialog open={!!confirmation} title={confirmation?.title || ''} description={confirmation?.description || ''} confirmLabel={confirmation?.confirmLabel} onCancel={() => resolveConfirmation(false)} onConfirm={() => resolveConfirmation(true)} />
       <style jsx global>{`.admin-field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.admin-field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}`}</style>
     </div>
   );
+}
+
+function PaymentProofModal({ code, url, processing, onClose, onVerify }: { code: string; url: string; processing: string; onClose: () => void; onVerify: () => void }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/65 p-0 backdrop-blur-sm sm:items-center sm:p-5" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+    <div role="dialog" aria-modal="true" aria-labelledby="payment-proof-title" className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl sm:max-w-3xl sm:rounded-[2rem]">
+      <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-6 py-5 sm:px-7"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Bukti pembayaran</p><h2 id="payment-proof-title" className="mt-1 font-serif text-2xl font-semibold">{code}</h2></div><button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--line)] transition hover:bg-[var(--surface2)]" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--surface2)] p-4 sm:p-6"><img src={url} alt={`Bukti pembayaran ${code}`} className="max-h-[65vh] max-w-full rounded-xl object-contain shadow-sm" /></div>
+      <div className="flex flex-col-reverse gap-2 border-t border-[var(--line)] px-6 py-4 sm:flex-row sm:justify-end sm:px-7"><button type="button" onClick={onClose} className="btn-secondary px-6 py-3 text-sm">Tutup</button><button type="button" onClick={onVerify} disabled={processing !== ''} className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-50">{processing === code ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Verifikasi pembayaran</button></div>
+    </div>
+  </div>;
 }
 
 interface BookingTableProps {
