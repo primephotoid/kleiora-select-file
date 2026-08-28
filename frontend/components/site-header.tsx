@@ -16,7 +16,7 @@ export function SiteHeader() {
         <nav className="hidden items-center gap-8 text-sm font-semibold text-[var(--muted)] md:flex">
           <Link href="/" className="hover:text-[var(--text)]">Home</Link>
           <Link href="/#process" className="hover:text-[var(--text)]">Cara Booking</Link>
-          <Link href="/#portfolio" className="hover:text-[var(--text)]">Portfolio</Link>
+          <Link href="/#portfolio" className="hover:text-[var(--text)]">Portofolio</Link>
           <Link href="/booking" className="hover:text-[var(--text)]">Booking</Link>
         </nav>
         <div className="hidden items-center gap-3 md:flex">
@@ -34,7 +34,7 @@ export function SiteHeader() {
           <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm font-semibold">
             <Link href="/" onClick={() => setOpen(false)}>Home</Link>
             <Link href="/#process" onClick={() => setOpen(false)}>Cara Booking</Link>
-            <Link href="/#portfolio" onClick={() => setOpen(false)}>Portfolio</Link>
+            <Link href="/#portfolio" onClick={() => setOpen(false)}>Portofolio</Link>
             <Link href="/booking" onClick={() => setOpen(false)} className="text-[var(--gold-dark)]">Booking Sekarang</Link>
           </div>
         </nav>

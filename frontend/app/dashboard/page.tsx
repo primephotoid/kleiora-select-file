@@ -12,6 +12,7 @@ import {
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
+import { ImageCropper } from '@/components/ImageCropper';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
@@ -614,100 +615,120 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
   const [uploading, setUploading] = useState(false);
   const [localPreview, setLocalPreview] = useState('');
   const [uploadError, setUploadError] = useState('');
+  const [cropSrc, setCropSrc] = useState('');
+  const [pendingFileName, setPendingFileName] = useState('');
 
   useEffect(() => {
     return () => {
       if (localPreview.startsWith('blob:')) URL.revokeObjectURL(localPreview);
+      if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc);
     };
-  }, [localPreview]);
+  }, [localPreview, cropSrc]);
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const preview = URL.createObjectURL(file);
+    setPendingFileName(file.name);
+    const objectUrl = URL.createObjectURL(file);
+    setCropSrc(objectUrl);
+    e.target.value = '';
+  };
+
+  const handleCropConfirm = async (croppedFile: File) => {
+    setCropSrc('');
+    const preview = URL.createObjectURL(croppedFile);
     setLocalPreview(preview);
     setUploadError('');
     setUploading(true);
     try {
       const token = localStorage.getItem('kleiora_token') || '';
-      const res = await uploadPackageImage(file, token);
+      const res = await uploadPackageImage(croppedFile, token);
       setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
     } catch (err) {
       setLocalPreview('');
       setUploadError(err instanceof Error ? err.message : 'Gagal upload gambar');
     } finally {
       setUploading(false);
-      e.target.value = '';
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Paket</p>
-            <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Paket' : 'Buat Paket Baru'}</h2>
+    <>
+      {cropSrc && (
+        <ImageCropper
+          imageSrc={cropSrc}
+          aspect={3 / 2}
+          title="Sesuaikan Foto Paket"
+          fileName={pendingFileName}
+          onCropConfirm={handleCropConfirm}
+          onCancel={() => setCropSrc('')}
+        />
+      )}
+      <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+        <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-8">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Paket</p>
+              <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Paket' : 'Buat Paket Baru'}</h2>
+            </div>
+            <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
           </div>
-          <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
-        </div>
-        {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
-        
-        <div className="mt-7 grid gap-4 sm:grid-cols-2">
-          <Field label="Nama Paket"><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="admin-field" placeholder="Contoh: Personal Package" /></Field>
-          <Field label="Kode Paket"><input required value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="admin-field" placeholder="Contoh: personal-1" /></Field>
+          {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
           
-          <div className="sm:col-span-2">
-            <Field label="Harga (Rp)"><input required type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="admin-field" /></Field>
-          </div>
-          
-          <div className="sm:col-span-2">
-            <Field label="Deskripsi Singkat"><textarea required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="admin-field min-h-[80px]" placeholder="Penjelasan paket..." /></Field>
-          </div>
+          <div className="mt-7 grid gap-4 sm:grid-cols-2">
+            <Field label="Nama Paket"><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="admin-field" placeholder="Contoh: Personal Package" /></Field>
+            <Field label="Kode Paket"><input required value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="admin-field" placeholder="Contoh: personal-1" /></Field>
+            
+            <div className="sm:col-span-2">
+              <Field label="Harga (Rp)"><input required type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="admin-field" /></Field>
+            </div>
+            
+            <div className="sm:col-span-2">
+              <Field label="Deskripsi Singkat"><textarea required value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="admin-field min-h-[80px]" placeholder="Penjelasan paket..." /></Field>
+            </div>
 
-          <Field label="Durasi (Jam)"><input required type="number" min="1" value={form.duration_hours} onChange={e => setForm({ ...form, duration_hours: Number(e.target.value) })} className="admin-field" /></Field>
-          <Field label="Label Durasi (Opsional)"><input value={form.duration_label || ''} onChange={e => setForm({ ...form, duration_label: e.target.value })} className="admin-field" placeholder="Contoh: 1 jam 30 menit" /></Field>
-          
-          <Field label="Jumlah Lokasi"><input required type="number" min="1" value={form.location_count} onChange={e => setForm({ ...form, location_count: Number(e.target.value) })} className="admin-field" /></Field>
-          <Field label="Jumlah Foto Edit"><input required type="number" min="0" value={form.edited_photos} onChange={e => setForm({ ...form, edited_photos: Number(e.target.value) })} className="admin-field" /></Field>
-          
-          <div className="sm:col-span-2 p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
-            <Field label="Foto Paket">
-              <div className="flex items-center gap-4 mt-2">
-                {form.image_path ? (
-                  <img src={localPreview || getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
-                ) : localPreview ? (
-                  <img src={localPreview} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
-                ) : (
-                  <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
-                )}
-                <div className="flex-1">
-                  <label className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                    {uploading ? 'Mengupload...' : 'Pilih Gambar'}
-                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} disabled={uploading} />
-                  </label>
-                  <p className="mt-1 text-[10px] text-[var(--muted)]">Format JPG, PNG, atau WEBP.</p>
+            <Field label="Durasi (Jam)"><input required type="number" min="1" value={form.duration_hours} onChange={e => setForm({ ...form, duration_hours: Number(e.target.value) })} className="admin-field" /></Field>
+            <Field label="Label Durasi (Opsional)"><input value={form.duration_label || ''} onChange={e => setForm({ ...form, duration_label: e.target.value })} className="admin-field" placeholder="Contoh: 1 jam 30 menit" /></Field>
+            
+            <Field label="Jumlah Lokasi"><input required type="number" min="1" value={form.location_count} onChange={e => setForm({ ...form, location_count: Number(e.target.value) })} className="admin-field" /></Field>
+            <Field label="Jumlah Foto Edit"><input required type="number" min="0" value={form.edited_photos} onChange={e => setForm({ ...form, edited_photos: Number(e.target.value) })} className="admin-field" /></Field>
+            
+            <div className="sm:col-span-2 p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
+              <Field label="Foto Paket (Rasio 3:2, Landscape)">
+                <div className="flex items-center gap-4 mt-2">
+                  {form.image_path || localPreview ? (
+                    <img src={localPreview || getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                  ) : (
+                    <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
+                  )}
+                  <div className="flex-1">
+                    <label className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                      {uploading ? 'Mengupload...' : 'Pilih & Crop Gambar'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} disabled={uploading || !!cropSrc} />
+                    </label>
+                    <p className="mt-1 text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih gambar.</p>
+                  </div>
                 </div>
-              </div>
-            </Field>
+              </Field>
+            </div>
+            
+            <div className="sm:col-span-2 flex items-center gap-2 mt-2">
+              <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
+              <label htmlFor="is_active" className="text-sm font-bold text-gray-700">Aktifkan paket ini (Tampil di publik)</label>
+            </div>
           </div>
-          
-          <div className="sm:col-span-2 flex items-center gap-2 mt-2">
-            <input type="checkbox" id="is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
-            <label htmlFor="is_active" className="text-sm font-bold text-gray-700">Aktifkan paket ini (Tampil di publik)</label>
-          </div>
-        </div>
 
-        <div className="mt-7 flex gap-3">
-          <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
-          <button disabled={creating || uploading} className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50">
-            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {creating ? 'Menyimpan...' : 'Simpan Paket'}
-          </button>
-        </div>
-      </form>
-    </div>
+          <div className="mt-7 flex gap-3">
+            <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
+            <button disabled={creating || uploading} className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50">
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {creating ? 'Menyimpan...' : 'Simpan Paket'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
 }
 
@@ -738,87 +759,135 @@ function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioIt
 function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { form: PortfolioItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  // Queue of files to crop (for multi-upload)
+  const [cropQueue, setCropQueue] = useState<{ src: string; name: string }[]>([]);
+  const [croppedPaths, setCroppedPaths] = useState<string[]>([]);
 
-  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      cropQueue.forEach(item => { if (item.src.startsWith('blob:')) URL.revokeObjectURL(item.src); });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    const queue = Array.from(files).map(f => ({ src: URL.createObjectURL(f), name: f.name }));
+    setCropQueue(queue);
+    setCroppedPaths([]);
+    e.target.value = '';
+  };
+
+  const handleCropConfirm = async (croppedFile: File) => {
+    // Remove the first item from the queue
+    const current = cropQueue[0];
+    if (current?.src.startsWith('blob:')) URL.revokeObjectURL(current.src);
+    const remaining = cropQueue.slice(1);
+    setCropQueue(remaining);
+
     setUploading(true);
     setUploadError('');
     try {
       const token = localStorage.getItem('kleiora_token') || '';
-      const paths = [];
-      for (let i = 0; i < files.length; i++) {
-        const res = await uploadPortfolioImage(files[i], token);
-        paths.push(res.path);
+      const res = await uploadPortfolioImage(croppedFile, token);
+      const newPaths = [...croppedPaths, res.path];
+      setCroppedPaths(newPaths);
+      // If no more in queue, update form
+      if (remaining.length === 0) {
+        setForm((prev: PortfolioItem) => ({ ...prev, image_path: newPaths.join(',') }));
+        setCroppedPaths([]);
       }
-      setForm({ ...form, image_path: paths.join(',') });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Gagal upload gambar');
+      // Clear queue on error
+      setCropQueue([]);
     } finally {
       setUploading(false);
     }
   };
 
+  const handleCropCancel = () => {
+    // Cancel entire queue
+    cropQueue.forEach(item => { if (item.src.startsWith('blob:')) URL.revokeObjectURL(item.src); });
+    setCropQueue([]);
+    setCroppedPaths([]);
+  };
+
   const imagePaths = form.image_path ? form.image_path.split(',') : [];
+  const currentCrop = cropQueue[0];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Portofolio</p>
-            <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Foto' : 'Upload Foto Baru'}</h2>
+    <>
+      {currentCrop && (
+        <ImageCropper
+          imageSrc={currentCrop.src}
+          aspect={3 / 4}
+          title={cropQueue.length > 1 ? `Sesuaikan Foto (${cropQueue.length} tersisa)` : 'Sesuaikan Foto Portofolio'}
+          fileName={currentCrop.name}
+          onCropConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
+      <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+        <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Portofolio</p>
+              <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Foto' : 'Upload Foto Baru'}</h2>
+            </div>
+            <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
           </div>
-          <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
-        </div>
-        {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
-        
-        <div className="mt-7 space-y-4">
-          <div className="p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
-            <Field label="Foto Portofolio (Rekomendasi rasio 3:4)">
-              <div className="mt-2 flex flex-col items-center gap-4">
-                {imagePaths.length > 0 ? (
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {imagePaths.map((p, i) => (
-                      <img key={i} src={getImageUrl(p)} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
-                    ))}
+          {uploadError && <div role="alert" className="mt-5 flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{uploadError}</span><button type="button" onClick={() => setUploadError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
+          
+          <div className="mt-7 space-y-4">
+            <div className="p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
+              <Field label="Foto Portofolio (Rasio 3:4, Portrait)">
+                <div className="mt-2 flex flex-col items-center gap-4">
+                  {imagePaths.length > 0 ? (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {imagePaths.map((p, i) => (
+                        <img key={i} src={getImageUrl(p)} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="h-40 w-32 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-8 w-8 text-slate-300"/></div>
+                  )}
+                  <div className="w-full">
+                    <label className="btn-secondary flex w-full items-center justify-center gap-2 px-4 py-2.5 text-xs cursor-pointer">
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                      {uploading ? 'Mengupload...' : (form.id ? 'Pilih & Crop Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading || cropQueue.length > 0} />
+                    </label>
+                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih. Format JPG, PNG, WEBP. Maks 5MB.</p>
                   </div>
-                ) : (
-                  <div className="h-40 w-32 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-8 w-8 text-slate-300"/></div>
-                )}
-                <div className="w-full">
-                  <label className="btn-secondary flex w-full items-center justify-center gap-2 px-4 py-2.5 text-xs cursor-pointer">
-                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                    {uploading ? 'Mengupload...' : (form.id ? 'Pilih Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
-                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading} />
-                  </label>
-                  <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Format JPG, PNG, atau WEBP. Maks 5MB per gambar.</p>
                 </div>
-              </div>
-            </Field>
-          </div>
-          
-          <Field label="Judul/Keterangan (Opsional)"><input value={form.title || ''} onChange={e => setForm({ ...form, title: e.target.value })} className="admin-field" placeholder="Contoh: Graduation Session" /></Field>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Urutan Tampil (Sort)"><input type="number" min="0" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: Number(e.target.value) })} className="admin-field" /></Field>
-            <div className="flex flex-col justify-end pb-3">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="port_is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
-                <label htmlFor="port_is_active" className="text-sm font-bold text-gray-700">Tampilkan foto</label>
+              </Field>
+            </div>
+            
+            <Field label="Judul/Keterangan (Opsional)"><input value={form.title || ''} onChange={e => setForm({ ...form, title: e.target.value })} className="admin-field" placeholder="Contoh: Graduation Session" /></Field>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Urutan Tampil (Sort)"><input type="number" min="0" value={form.sort_order} onChange={e => setForm({ ...form, sort_order: Number(e.target.value) })} className="admin-field" /></Field>
+              <div className="flex flex-col justify-end pb-3">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="port_is_active" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]" />
+                  <label htmlFor="port_is_active" className="text-sm font-bold text-gray-700">Tampilkan foto</label>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-7 flex gap-3">
-          <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
-          <button disabled={creating || uploading || !form.image_path} className="btn-primary flex-1 px-5 py-3.5 text-sm disabled:opacity-50">
-            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            {creating ? 'Menyimpan...' : 'Simpan Foto'}
-          </button>
-        </div>
-      </form>
-    </div>
+          <div className="mt-7 flex gap-3">
+            <button type="button" onClick={onClose} disabled={creating || uploading} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button>
+            <button disabled={creating || uploading || !form.image_path} className="btn-primary flex-1 px-5 py-3.5 text-sm disabled:opacity-50">
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {creating ? 'Menyimpan...' : 'Simpan Foto'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
   );
 }
