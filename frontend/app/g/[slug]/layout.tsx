@@ -30,8 +30,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const gallery = await getGallery(params.slug);
   if (!gallery) {
     return {
-      title: 'Galeri Foto — Kleiora.grads',
+      title: { absolute: 'Galeri Foto — Kleiora.grads' },
       description: 'Lihat dan pilih foto favoritmu dari sesi bersama Kleiora.grads.',
+      robots: { index: false, follow: false, nocache: true },
     };
   }
 
@@ -46,8 +47,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     : `${siteUrl.replace(/\/$/, '')}/images/hero-home.jpg`;
 
   return {
-    title,
+    title: { absolute: title },
     description,
+    robots: { index: false, follow: false, nocache: true },
     alternates: { canonical: galleryUrl },
     openGraph: {
       type: 'website',

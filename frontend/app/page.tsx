@@ -5,6 +5,52 @@ import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ReviewSection } from '@/components/ReviewSection';
 import { API_BASE_URL, formatRupiah, getImageUrl, PortfolioItem, ReviewItem } from '@/lib/api';
 
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'ProfessionalService',
+      '@id': 'https://kleioragrads.com/#business',
+      name: 'Kleiora Grads',
+      url: 'https://kleioragrads.com',
+      image: 'https://kleioragrads.com/images/hero-home.jpg',
+      logo: 'https://kleioragrads.com/icon.svg',
+      telephone: '+62-857-5252-8300',
+      description: 'Jasa foto wisuda profesional untuk berbagai kota di Indonesia dengan booking online dan galeri pribadi.',
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: 'Makassar',
+        addressRegion: 'Sulawesi Selatan',
+        addressCountry: 'ID',
+      },
+      areaServed: { '@type': 'Country', name: 'Indonesia' },
+      contactPoint: {
+        '@type': 'ContactPoint',
+        telephone: '+62-857-5252-8300',
+        contactType: 'customer service',
+        availableLanguage: ['Indonesian'],
+      },
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://kleioragrads.com/#website',
+      url: 'https://kleioragrads.com',
+      name: 'Kleiora Grads',
+      inLanguage: 'id-ID',
+      publisher: { '@id': 'https://kleioragrads.com/#business' },
+    },
+    {
+      '@type': 'Service',
+      '@id': 'https://kleioragrads.com/#graduation-photography',
+      name: 'Jasa Foto Wisuda Profesional',
+      serviceType: 'Fotografi wisuda',
+      provider: { '@id': 'https://kleioragrads.com/#business' },
+      areaServed: { '@type': 'Country', name: 'Indonesia' },
+      url: 'https://kleioragrads.com/booking',
+    },
+  ],
+};
+
 async function getPortfolios(): Promise<PortfolioItem[]> {
   try {
     const res = await fetch(`${API_BASE_URL}/portfolios`, { next: { revalidate: 60 } });
@@ -33,11 +79,15 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-[var(--bg)]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }}
+      />
       <SiteHeader />
       <main>
         <section className="relative flex min-h-screen items-center justify-center bg-[var(--bg)] pb-12 pt-32 sm:pt-40 text-center">
           <div className="absolute inset-0 z-0">
-            <Image src="/bg-main-v3.jpg" alt="Background" fill className="object-cover" priority unoptimized />
+            <Image src="/bg-main-v3.jpg" alt="Sesi foto wisuda profesional bersama Kleiora Grads" fill className="object-cover" priority unoptimized />
             <div className="absolute inset-0 bg-black/40"></div>
             <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-[var(--bg)] to-transparent"></div>
           </div>
@@ -49,6 +99,7 @@ export default async function HomePage() {
               <p className="text-base font-medium text-white drop-shadow-md">Selamat datang di</p>
               <h1 className="mt-1 font-serif text-6xl font-normal tracking-tight sm:text-7xl drop-shadow-lg text-white">
                 Kleiora.<span className="text-[var(--gold)]">grads</span>
+                <span className="mt-3 block font-sans text-sm font-bold uppercase tracking-[.22em] text-white sm:text-base">Jasa Foto Wisuda Profesional</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-relaxed text-white drop-shadow-md">
                 Terima kasih sudah mempercayakan momen berharga ini kepada kami. Kami siap mengabadikan pencapaian terbaikmu dengan hasil foto wisuda yang elegan, berkesan, dan tak terlupakan.
@@ -95,7 +146,7 @@ export default async function HomePage() {
               <div className="grid gap-5 sm:grid-cols-3">
                 {portfolios.map(port => (
                   <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group">
-                    <img src={getImageUrl(port.image_path)} alt={port.title || 'Portfolio'} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
+                    <img src={getImageUrl(port.image_path)} alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
                     <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   </div>
                 ))}
@@ -103,6 +154,31 @@ export default async function HomePage() {
             </div>
           </section>
         )}
+
+        <section className="border-y border-[var(--line)] bg-[var(--surface)] py-24">
+          <div className="mx-auto grid max-w-6xl gap-10 px-6 lg:grid-cols-[1.15fr_.85fr] lg:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Fotografer wisuda untuk berbagai kota</p>
+              <h2 className="mt-3 font-serif text-4xl font-medium leading-tight">Abadikan momen wisudamu dengan proses yang praktis</h2>
+              <p className="mt-5 max-w-2xl text-sm leading-7 text-[var(--muted)]">
+                Kleiora Grads melayani sesi foto wisuda di berbagai kota di Indonesia untuk personal, pasangan, keluarga, dan sahabat. Pilih paket dan jadwal secara online, lakukan sesi foto, lalu tentukan hasil favorit melalui galeri pribadimu.
+              </p>
+              <Link href="/booking" className="btn-primary mt-7 px-6 py-3.5">Lihat Paket Foto Wisuda <ArrowRight className="h-4 w-4" /></Link>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              {[
+                ['Booking online', 'Pilih paket, tanggal, jam WITA, dan lokasi sesi tanpa proses yang rumit.'],
+                ['Galeri pribadi', 'Lihat seluruh hasil sesi dan pilih foto yang ingin diedit sesuai kuota paket.'],
+                ['Pendampingan admin', 'Konfirmasi pembayaran dan informasi sesi ditangani langsung oleh tim Kleiora Grads.'],
+              ].map(([title, copy]) => (
+                <article key={title} className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-5">
+                  <h3 className="font-bold">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <ReviewSection initialReviews={reviews} />
 

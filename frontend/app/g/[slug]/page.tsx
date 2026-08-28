@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Heart, Loader2, Send } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Heart, Loader2, RotateCcw, Send, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 
 interface PhotoItem { id: number; drive_file_id: string; file_name: string; thumbnail_url: string; view_url: string }
@@ -10,8 +10,8 @@ interface Gallery { slug: string; title: string; client_name: string; max_select
 
 const photoNameCollator = new Intl.Collator('id-ID', { numeric: true, sensitivity: 'base' });
 
-function driveThumbnail(fileID: string) {
-  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileID)}=w600`;
+function driveThumbnail(fileID: string, width = 600) {
+  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileID)}=w${width}`;
 }
 
 export default function GalleryClientPage({ params }: { params: { slug: string } }) {
@@ -24,6 +24,8 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [previewPhoto, setPreviewPhoto] = useState<PhotoItem | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; mins: number; expired: boolean } | null>(null);
 
   useEffect(() => {
@@ -82,9 +84,30 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
       .finally(() => setLoading(false));
   }, [params.slug]);
 
+  useEffect(() => {
+    if (!previewPhoto) return;
+    setPreviewZoom(1);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewPhoto(null);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [previewPhoto]);
+
   const displayedPhotos = useMemo(() => [...(gallery?.photos ?? [])]
     .filter(photo => filter === 'all' || selectedIds.includes(photo.drive_file_id))
     .sort((left, right) => photoNameCollator.compare(left.file_name, right.file_name) || left.id - right.id), [gallery, filter, selectedIds]);
+
+  function showAdjacentPhoto(direction: -1 | 1) {
+    if (!previewPhoto || !displayedPhotos.length) return;
+    const currentIndex = displayedPhotos.findIndex(photo => photo.id === previewPhoto.id);
+    const nextIndex = (currentIndex + direction + displayedPhotos.length) % displayedPhotos.length;
+    setPreviewPhoto(displayedPhotos[nextIndex]);
+  }
 
   function toggleSelect(id: string) {
     if (timeLeft?.expired) {
@@ -152,11 +175,16 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
             )}
             {timeLeft?.expired && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Waktu pemilihan sudah habis (30 hari terlewati). Kamu tidak bisa lagi mengubah atau mengirim pilihan.</div>}
             {error && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-4"><div className="flex gap-2"><button onClick={() => setFilter('all')} className={`rounded-full border px-4 py-2 text-xs font-semibold ${filter === 'all' ? 'border-[var(--gold)] text-[var(--gold)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>Semua ({gallery.photos.length})</button><button onClick={() => setFilter('selected')} className={`rounded-full border px-4 py-2 text-xs font-semibold ${filter === 'selected' ? 'border-[var(--gold)] text-[var(--gold)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>Dipilih ({selectedIds.length})</button></div><p className="text-xs text-[var(--muted)]">Ketuk foto untuk memilih atau membatalkan</p></div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">{displayedPhotos.map(photo => { const selected = selectedIds.includes(photo.drive_file_id); return <button type="button" key={photo.id} onClick={() => toggleSelect(photo.drive_file_id)} className={`group relative aspect-[4/3] overflow-hidden rounded-xl border-2 bg-[var(--surface2)] text-left transition ${selected ? 'border-[var(--gold)]' : 'border-transparent hover:-translate-y-1'}`}><img src={driveThumbnail(photo.drive_file_id)} alt={photo.file_name} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-3 pb-3 pt-9 text-[10px] text-white">{photo.file_name}</span><span className={`absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full ${selected ? 'bg-[var(--gold)] text-black' : 'bg-black/60 text-white'}`}><Heart className={`h-4 w-4 ${selected ? 'fill-black' : ''}`} /></span></button>; })}</div>
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4"><div className="flex gap-2"><button onClick={() => setFilter('all')} className={`rounded-full border px-4 py-2 text-xs font-semibold ${filter === 'all' ? 'border-[var(--gold)] text-[var(--gold)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>Semua ({gallery.photos.length})</button><button onClick={() => setFilter('selected')} className={`rounded-full border px-4 py-2 text-xs font-semibold ${filter === 'selected' ? 'border-[var(--gold)] text-[var(--gold)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>Dipilih ({selectedIds.length})</button></div><p className="text-xs text-[var(--muted)]">Ketuk foto untuk memilih · gunakan ikon kaca pembesar untuk melihat detail</p></div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">{displayedPhotos.map(photo => { const selected = selectedIds.includes(photo.drive_file_id); return <div key={photo.id} className={`group relative aspect-[4/3] overflow-hidden rounded-xl border-2 bg-[var(--surface2)] text-left transition ${selected ? 'border-[var(--gold)]' : 'border-transparent hover:-translate-y-1'}`}><button type="button" onClick={() => toggleSelect(photo.drive_file_id)} className="absolute inset-0 h-full w-full text-left" aria-label={`${selected ? 'Batalkan pilihan' : 'Pilih'} ${photo.file_name}`}><img src={driveThumbnail(photo.drive_file_id)} alt={photo.file_name} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/><span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-3 pb-3 pt-9 text-[10px] text-white">{photo.file_name}</span><span className={`absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full ${selected ? 'bg-[var(--gold)] text-black' : 'bg-black/60 text-white'}`}><Heart className={`h-4 w-4 ${selected ? 'fill-black' : ''}`} /></span></button><button type="button" onClick={() => setPreviewPhoto(photo)} className="absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80" aria-label={`Perbesar ${photo.file_name}`} title="Perbesar foto"><ZoomIn className="h-4 w-4" /></button></div>; })}</div>
           </>
         )}
       </main>
+      {previewPhoto && <div className="fixed inset-0 z-[60] flex flex-col bg-black/95 text-white backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={`Preview ${previewPhoto.file_name}`} onMouseDown={event => event.target === event.currentTarget && setPreviewPhoto(null)}>
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6"><div className="min-w-0"><p className="truncate text-sm font-semibold">{previewPhoto.file_name}</p><p className="text-[11px] text-white/60">Scroll atau gunakan tombol untuk memperbesar</p></div><div className="flex shrink-0 items-center gap-2"><button type="button" onClick={() => setPreviewZoom(value => Math.max(1, value - .25))} disabled={previewZoom <= 1} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30" aria-label="Perkecil"><ZoomOut className="h-4 w-4" /></button><span className="hidden w-14 text-center text-xs sm:block">{Math.round(previewZoom * 100)}%</span><button type="button" onClick={() => setPreviewZoom(value => Math.min(4, value + .25))} disabled={previewZoom >= 4} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30" aria-label="Perbesar"><ZoomIn className="h-4 w-4" /></button><button type="button" onClick={() => setPreviewZoom(1)} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Reset zoom"><RotateCcw className="h-4 w-4" /></button><button type="button" onClick={() => setPreviewPhoto(null)} className="ml-1 flex h-10 w-10 items-center justify-center rounded-full bg-white text-black hover:bg-white/80" aria-label="Tutup preview"><X className="h-5 w-5" /></button></div></div>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-4" onWheel={event => { event.preventDefault(); setPreviewZoom(value => Math.min(4, Math.max(1, value + (event.deltaY < 0 ? .25 : -.25)))); }}><button type="button" onClick={() => showAdjacentPhoto(-1)} className="fixed left-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 ring-1 ring-white/20 hover:bg-black/80 sm:left-6" aria-label="Foto sebelumnya"><ChevronLeft className="h-6 w-6" /></button><img src={driveThumbnail(previewPhoto.drive_file_id, 2000)} alt={previewPhoto.file_name} draggable={false} referrerPolicy="no-referrer" onDoubleClick={() => setPreviewZoom(value => value === 1 ? 2 : 1)} className="max-h-full max-w-full select-none object-contain transition-transform duration-200" style={{ transform: `scale(${previewZoom})` }} /><button type="button" onClick={() => showAdjacentPhoto(1)} className="fixed right-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 ring-1 ring-white/20 hover:bg-black/80 sm:right-6" aria-label="Foto berikutnya"><ChevronRight className="h-6 w-6" /></button></div>
+        <div className="flex items-center justify-center border-t border-white/10 px-4 py-3"><button type="button" onClick={() => toggleSelect(previewPhoto.drive_file_id)} disabled={timeLeft?.expired ?? false} className={`flex items-center gap-2 rounded-full px-6 py-3 text-sm font-bold transition disabled:opacity-40 ${selectedIds.includes(previewPhoto.drive_file_id) ? 'bg-[var(--gold)] text-black' : 'bg-white text-black hover:bg-white/90'}`}><Heart className={`h-4 w-4 ${selectedIds.includes(previewPhoto.drive_file_id) ? 'fill-black' : ''}`} />{selectedIds.includes(previewPhoto.drive_file_id) ? 'Batalkan pilihan' : 'Pilih foto ini'}</button></div>
+      </div>}
       {showSubmitModal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"><div className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6"><h2 className="font-serif text-2xl">Konfirmasi pilihan</h2><p className="mt-2 text-sm text-[var(--muted)]">Kamu memilih {selectedIds.length} foto. Pilihan masih dapat diperbarui dengan mengirim ulang sebelum galeri diarsipkan.</p><label className="mt-5 block text-xs font-bold">Catatan untuk editor</label><textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-sm outline-none focus:border-[var(--gold)]" placeholder="Contoh: tone hangat, hapus objek di belakang..."/><div className="mt-6 flex justify-end gap-3"><button onClick={() => setShowSubmitModal(false)} className="btn-secondary px-4 py-2.5 text-xs">Batal</button><button onClick={submitSelection} disabled={sending} className="rounded-full bg-[var(--gold)] px-5 py-2.5 text-xs font-bold text-[var(--on-gold)] disabled:opacity-50">{sending ? 'Mengirim...' : 'Kirim ke Studio'}</button></div></div></div>}
     </div>
   );
