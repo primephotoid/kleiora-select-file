@@ -239,6 +239,17 @@ func main() {
 		return c.Next()
 	})
 	app.Static("/uploads", "./uploads")
+	// Public images are also exposed below the API prefix so deployments only
+	// need to proxy /api/v1 to the backend. Existing database paths remain
+	// /uploads/... and are translated by the frontend.
+	app.Use("/api/v1/media", func(c *fiber.Ctx) error {
+		uploadPath := strings.Replace(c.Path(), "/api/v1/media", "/uploads", 1)
+		if shouldBlockUploadPath(uploadPath) {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
+		return c.Next()
+	})
+	app.Static("/api/v1/media", "./uploads")
 	api := app.Group("/api/v1")
 	api.Post("/auth/register", h.Register)
 	api.Post("/auth/login", h.Login)

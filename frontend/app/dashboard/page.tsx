@@ -553,19 +553,30 @@ function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () =
 
 function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { form: PackageItem; setForm: React.Dispatch<React.SetStateAction<any>>; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
   const [uploading, setUploading] = useState(false);
+  const [localPreview, setLocalPreview] = useState('');
+
+  useEffect(() => {
+    return () => {
+      if (localPreview.startsWith('blob:')) URL.revokeObjectURL(localPreview);
+    };
+  }, [localPreview]);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const preview = URL.createObjectURL(file);
+    setLocalPreview(preview);
     setUploading(true);
     try {
       const token = localStorage.getItem('kleiora_token') || '';
       const res = await uploadPackageImage(file, token);
-      setForm({ ...form, image_path: res.path });
+      setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
     } catch (err) {
+      setLocalPreview('');
       alert(err instanceof Error ? err.message : 'Gagal upload gambar');
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -602,7 +613,9 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
             <Field label="Foto Paket">
               <div className="flex items-center gap-4 mt-2">
                 {form.image_path ? (
-                  <img src={getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                  <img src={localPreview || getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                ) : localPreview ? (
+                  <img src={localPreview} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
                 ) : (
                   <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
                 )}
@@ -702,7 +715,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
                 {imagePaths.length > 0 ? (
                   <div className="flex flex-wrap justify-center gap-2">
                     {imagePaths.map((p, i) => (
-                      <img key={i} src={API_BASE_URL.replace('/api/v1', '') + p} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                      <img key={i} src={getImageUrl(p)} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
                     ))}
                   </div>
                 ) : (

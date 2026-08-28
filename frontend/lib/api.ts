@@ -13,7 +13,10 @@ export const API_BASE_URL = getApiBaseUrl();
 export function getImageUrl(path: string | undefined | null): string {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  if (path.startsWith('/uploads')) return API_BASE_URL.replace('/api/v1', '') + path;
+  if (path.startsWith('/uploads/')) {
+    const relativePath = path.slice('/uploads/'.length).split('/').map(encodeURIComponent).join('/');
+    return `${API_BASE_URL.replace(/\/$/, '')}/media/${relativePath}`;
+  }
   return path;
 }
 
