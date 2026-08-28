@@ -1041,8 +1041,8 @@ func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Image required"})
 	}
 
-	if file.Size > 5*1024*1024 {
-		return c.Status(400).JSON(fiber.Map{"error": "Ukuran gambar terlalu besar (Maks 5MB)."})
+	if file.Size > 25*1024*1024 {
+		return c.Status(400).JSON(fiber.Map{"error": "Ukuran gambar terlalu besar (Maks 25MB)."})
 	}
 
 	dir := "./uploads/portfolios"

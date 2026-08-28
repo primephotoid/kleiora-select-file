@@ -860,7 +860,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
                       {uploading ? 'Mengupload...' : (form.id ? 'Pilih & Crop Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
                       <input type="file" accept="image/jpeg,image/png,image/webp" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading || cropQueue.length > 0} />
                     </label>
-                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih. Format JPG, PNG, WEBP. Maks 5MB.</p>
+                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih. Format JPG, PNG, WEBP. Maks 25MB.</p>
                   </div>
                 </div>
               </Field>
