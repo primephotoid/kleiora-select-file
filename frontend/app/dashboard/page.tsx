@@ -394,7 +394,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => toggleReviewApproval(r.id)} className={`flex h-8 items-center rounded-full px-3 text-xs font-bold transition ${r.is_approved ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {r.is_approved ? 'Disetujui' : 'Sembunyikan'}
+                      {r.is_approved ? 'Sembunyikan' : 'Setujui'}
                     </button>
                     <button onClick={() => deleteReview(r.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600 transition hover:bg-red-100"><Trash className="h-4 w-4" /></button>
                   </div>

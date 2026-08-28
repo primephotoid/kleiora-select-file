@@ -18,7 +18,7 @@ async function getPortfolios(): Promise<PortfolioItem[]> {
 
 async function getReviews(): Promise<ReviewItem[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/reviews`, { next: { revalidate: 60 } });
+    const res = await fetch(`${API_BASE_URL}/reviews`, { cache: 'no-store' });
     if (!res.ok) return [];
     const data = await res.json();
     return data.reviews || [];

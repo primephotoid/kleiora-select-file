@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MessageCircle, Star, X, Check, Loader2 } from 'lucide-react';
 import { API_BASE_URL, ReviewItem } from '@/lib/api';
 
@@ -11,6 +11,30 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ client_name: '', rating: 5, comment: '' });
+
+  useEffect(() => {
+    let active = true;
+    const refreshReviews = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/reviews`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = await response.json() as { reviews?: ReviewItem[] };
+        if (active) setReviews(data.reviews || []);
+      } catch { /* Pertahankan data awal saat koneksi sementara bermasalah. */ }
+    };
+    const handleFocus = () => refreshReviews();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshReviews();
+    };
+    refreshReviews();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      active = false;
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,11 +48,6 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
       });
       if (res.ok) {
         setSuccess(true);
-        setTimeout(() => {
-          setShowForm(false);
-          setSuccess(false);
-          setForm({ client_name: '', rating: 5, comment: '' });
-        }, 3000);
       } else {
         const err = await res.json();
         setError(err.error || 'Gagal mengirim ulasan');
@@ -40,6 +59,14 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
     }
   }
 
+  function closeReviewForm() {
+    if (submitting) return;
+    setShowForm(false);
+    setSuccess(false);
+    setError('');
+    setForm({ client_name: '', rating: 5, comment: '' });
+  }
+
   return (
     <section id="reviews" className="bg-[var(--surface)] py-24">
       <div className="mx-auto max-w-6xl px-6">
@@ -48,7 +75,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
             <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Testimoni</p>
             <h2 className="mt-3 font-serif text-4xl font-medium">Apa kata mereka?</h2>
           </div>
-          <button onClick={() => { setError(''); setShowForm(true); }} className="btn-secondary px-6 py-3 text-sm">Tulis Ulasan</button>
+          <button onClick={() => { setSuccess(false); setError(''); setShowForm(true); }} className="btn-secondary px-6 py-3 text-sm">Tulis Ulasan</button>
         </div>
 
         {reviews.length > 0 ? (
@@ -82,18 +109,19 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={event => event.target === event.currentTarget && closeReviewForm()}>
           <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
             <div className="flex justify-between items-start mb-6">
-              <h3 className="font-serif text-2xl">Bagikan Pengalamanmu</h3>
-              <button onClick={() => setShowForm(false)} className="rounded-full bg-gray-100 p-2 hover:bg-gray-200"><X className="h-4 w-4" /></button>
+              <h3 className="font-serif text-2xl">{success ? 'Ulasan Terkirim' : 'Bagikan Pengalamanmu'}</h3>
+              <button onClick={closeReviewForm} disabled={submitting} className="rounded-full bg-gray-100 p-2 hover:bg-gray-200 disabled:opacity-50" aria-label="Tutup"><X className="h-4 w-4" /></button>
             </div>
             
             {success ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-4"><Check className="h-8 w-8" /></div>
-                <h4 className="text-xl font-bold">Terima Kasih!</h4>
-                <p className="mt-2 text-sm text-gray-600">Ulasanmu telah berhasil dikirim dan menunggu persetujuan admin.</p>
+                <h4 className="text-xl font-bold">Terima kasih!</h4>
+                <p className="mt-2 text-sm text-gray-600">Ulasan Anda telah berhasil dikirim.</p>
+                <button type="button" onClick={closeReviewForm} className="btn-primary mt-7 w-full py-3.5 text-sm">Selesai</button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
