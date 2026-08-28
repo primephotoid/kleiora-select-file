@@ -143,7 +143,7 @@ export default async function HomePage() {
                 </div>
                 <p className="max-w-sm text-sm leading-6 text-[var(--muted)]">Setiap sesi dirancang agar kamu tetap nyaman dan pulang dengan foto yang terasa personal.</p>
               </div>
-              <div className="grid gap-5 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {portfolios.map(port => (
                   <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group">
                     <img src={getImageUrl(port.image_path)} alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
