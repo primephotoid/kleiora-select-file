@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import Cropper from 'react-easy-crop';
-import type { CropArea as CropAreaResult } from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import { Check, X, ZoomIn, ZoomOut } from 'lucide-react';
 import getCroppedImg from '@/lib/cropImage';
 
@@ -31,10 +31,10 @@ export function ImageCropper({
 }: ImageCropperProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<CropAreaResult | null>(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [processing, setProcessing] = useState(false);
 
-  const onCropComplete = useCallback((_: CropAreaResult, croppedPixels: CropAreaResult) => {
+  const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
     setCroppedAreaPixels(croppedPixels);
   }, []);
 

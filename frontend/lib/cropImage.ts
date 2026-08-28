@@ -1,9 +1,4 @@
-export interface CropArea {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+import type { Area } from 'react-easy-crop';
 
 /**
  * Creates a cropped image file from a source image URL and a crop area.
@@ -15,7 +10,7 @@ export interface CropArea {
  */
 export default function getCroppedImg(
   imageSrc: string,
-  pixelCrop: CropArea,
+  pixelCrop: Area,
   fileName: string,
   fileType: string = 'image/jpeg'
 ): Promise<File> {
