@@ -69,6 +69,14 @@ type Review struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
+// BookingSequence stores the last human-readable booking number for each
+// calendar year. A new row starts each year at 001; historical bookings stay.
+type BookingSequence struct {
+	Year      string    `gorm:"size:4;primaryKey" json:"year"`
+	LastValue uint64    `gorm:"not null" json:"last_value"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Booking struct {
 	ID                  uint       `gorm:"primaryKey" json:"id"`
 	Code                string     `gorm:"size:191;uniqueIndex;not null" json:"code"`

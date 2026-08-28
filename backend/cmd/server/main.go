@@ -192,7 +192,7 @@ func main() {
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping MySQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}); err != nil {
 		log.Fatalf("Failed to run database migration: %v", err)
 	}
 	if err := migrateLegacyPaymentProofs(db, cfg); err != nil {

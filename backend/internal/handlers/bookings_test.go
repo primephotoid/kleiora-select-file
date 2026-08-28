@@ -29,7 +29,7 @@ func bookingTestApp(t *testing.T) (*fiber.App, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}); err != nil {
 		t.Fatal(err)
 	}
 	pkg := models.Package{Code: "premium", Name: "Premium", Price: 1250000, DurationHours: 3, LocationCount: 3, EditedPhotos: 60, IsActive: true}
@@ -53,8 +53,12 @@ func bookingTestApp(t *testing.T) (*fiber.App, *gorm.DB) {
 }
 
 func postBooking(t *testing.T, app *fiber.App, name string) *http.Response {
+	return postBookingAt(t, app, name, "2099-08-20", "10")
+}
+
+func postBookingAt(t *testing.T, app *fiber.App, name, sessionDate, sessionHour string) *http.Response {
 	t.Helper()
-	body, _ := json.Marshal(map[string]any{"package_code": "premium", "full_name": name, "campus_name": "Universitas Hasanuddin", "whatsapp": "081234567890", "session_date": "2099-08-20", "session_hour": "10", "session_location": "Makassar", "payment_type": "dp"})
+	body, _ := json.Marshal(map[string]any{"package_code": "premium", "full_name": name, "campus_name": "Universitas Hasanuddin", "whatsapp": "081234567890", "session_date": sessionDate, "session_hour": sessionHour, "session_location": "Makassar", "payment_type": "dp"})
 	req := httptest.NewRequest("POST", "/bookings", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	response, err := app.Test(req)
@@ -62,6 +66,20 @@ func postBooking(t *testing.T, app *fiber.App, name string) *http.Response {
 		t.Fatal(err)
 	}
 	return response
+}
+
+func decodeCreatedBooking(t *testing.T, response *http.Response) models.Booking {
+	t.Helper()
+	if response.StatusCode != fiber.StatusCreated {
+		t.Fatalf("expected booking creation to return 201, got %d", response.StatusCode)
+	}
+	var payload struct {
+		Booking models.Booking `json:"booking"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	return payload.Booking
 }
 
 func TestCreateBookingCalculatesDPAndEnforcesCapacity(t *testing.T) {
@@ -83,6 +101,47 @@ func TestCreateBookingCalculatesDPAndEnforcesCapacity(t *testing.T) {
 	}
 	if response := postBooking(t, app, "Citra"); response.StatusCode != fiber.StatusConflict {
 		t.Fatalf("expected full slot to return 409, got %d", response.StatusCode)
+	}
+}
+
+func TestBookingSequenceResetsEachYearWithoutDeletingBookings(t *testing.T) {
+	app, db := bookingTestApp(t)
+	first := decodeCreatedBooking(t, postBookingAt(t, app, "Year One A", "2099-08-20", "10"))
+	second := decodeCreatedBooking(t, postBookingAt(t, app, "Year One B", "2099-08-21", "10"))
+	newYear := decodeCreatedBooking(t, postBookingAt(t, app, "Year Two A", "2100-01-02", "10"))
+
+	if !strings.HasSuffix(first.Code, "-001") || !strings.HasSuffix(second.Code, "-002") {
+		t.Fatalf("expected 2099 sequence 001/002, got %s and %s", first.Code, second.Code)
+	}
+	if !strings.HasSuffix(newYear.Code, "-001") {
+		t.Fatalf("expected 2100 sequence to reset to 001, got %s", newYear.Code)
+	}
+	var bookingCount int64
+	if err := db.Model(&models.Booking{}).Count(&bookingCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if bookingCount != 3 {
+		t.Fatalf("expected all historical bookings to remain, got %d", bookingCount)
+	}
+}
+
+func TestBookingSequenceContinuesFromExistingAnnualCodes(t *testing.T) {
+	app, db := bookingTestApp(t)
+	var pkg models.Package
+	if err := db.Where("code = ?", "premium").First(&pkg).Error; err != nil {
+		t.Fatal(err)
+	}
+	existing := models.Booking{
+		Code: "KLR-PKG-010199-007", PackageID: pkg.ID, FullName: "Existing", CampusName: "Campus", WhatsApp: "081234567890",
+		SessionDate: "2099-01-01", SessionHour: "10", SessionLocation: "Makassar", PaymentType: "full", AmountDue: pkg.Price,
+		PaymentStatus: "pending", Status: "pending_payment",
+	}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+	created := decodeCreatedBooking(t, postBookingAt(t, app, "Next Existing", "2099-08-22", "10"))
+	if !strings.HasSuffix(created.Code, "-008") {
+		t.Fatalf("expected existing annual sequence to continue at 008, got %s", created.Code)
 	}
 }
 

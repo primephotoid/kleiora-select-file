@@ -560,12 +560,19 @@ function BookingFlow() {
                       <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={async e => {
                         const file = e.target.files?.[0];
                         if (!file) return;
+                        setError('');
+                        setProof(null);
                         try {
-                          const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true });
-                          setProof(compressed);
+                          const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                          const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true, fileType: outputType });
+                          const extension = outputType === 'image/png' ? '.png' : '.jpg';
+                          const baseName = file.name.replace(/\.[^.]+$/, '') || 'bukti-pembayaran';
+                          const normalized = new File([compressed], `${baseName}${extension}`, { type: outputType, lastModified: Date.now() });
+                          setProof(normalized);
                         } catch (err) {
                           console.error(err);
-                          setProof(file);
+                          setProof(null);
+                          setError('Foto bukti tidak dapat diproses. Gunakan JPG, PNG, atau WEBP yang valid.');
                         }
                       }} />
                     </label>

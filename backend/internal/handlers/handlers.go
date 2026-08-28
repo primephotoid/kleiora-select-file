@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const slotCapacity int64 = 2
@@ -36,12 +38,13 @@ const bookingTokenHeader = "X-Booking-Token"
 const paymentProofVersionHeader = "X-Payment-Proof-Version"
 
 var (
-	hourPattern     = regexp.MustCompile(`^(0[6-9]|1[0-9])$`)
-	whatsAppPattern = regexp.MustCompile(`^[0-9+][0-9 -]{7,19}$`)
-	errSlotFull     = errors.New("slot_full")
-	errSlotBusy     = errors.New("slot_busy")
-	registrationMu  sync.Mutex
-	bookingCreateMu sync.Mutex
+	hourPattern            = regexp.MustCompile(`^(0[6-9]|1[0-9])$`)
+	whatsAppPattern        = regexp.MustCompile(`^[0-9+][0-9 -]{7,19}$`)
+	bookingSequencePattern = regexp.MustCompile(`-[0-9]{3,6}$`)
+	errSlotFull            = errors.New("slot_full")
+	errSlotBusy            = errors.New("slot_busy")
+	registrationMu         sync.Mutex
+	bookingCreateMu        sync.Mutex
 )
 
 type Handler struct {
@@ -62,7 +65,7 @@ func randomToken(bytes int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func generateBookingCode(sessionDate string, packageCode string) (string, error) {
+func generateBookingCode(sessionDate string, packageCode string, sequence uint64) string {
 	parts := strings.Split(sessionDate, "-")
 	dateStr := "000000"
 	if len(parts) == 3 {
@@ -83,11 +86,43 @@ func generateBookingCode(sessionDate string, packageCode string) (string, error)
 		prefix = "GRP"
 	}
 
-	suffix, err := randomToken(4)
-	if err != nil {
-		return "", err
+	return fmt.Sprintf("KLR-%s-%s-%03d", prefix, dateStr, sequence)
+}
+
+func nextBookingSequence(tx *gorm.DB, sessionDate string) (uint64, error) {
+	year := strings.SplitN(sessionDate, "-", 2)[0]
+	var counter models.BookingSequence
+	result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("year = ?", year).First(&counter)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		var existingCodes []string
+		if err := tx.Model(&models.Booking{}).Where("session_date LIKE ?", year+"-%").Pluck("code", &existingCodes).Error; err != nil {
+			return 0, err
+		}
+		var highest uint64
+		for _, code := range existingCodes {
+			match := bookingSequencePattern.FindString(code)
+			if match == "" {
+				continue
+			}
+			value, err := strconv.ParseUint(strings.TrimPrefix(match, "-"), 10, 64)
+			if err == nil && value > highest {
+				highest = value
+			}
+		}
+		counter = models.BookingSequence{Year: year, LastValue: highest + 1}
+		if err := tx.Create(&counter).Error; err != nil {
+			return 0, err
+		}
+		return counter.LastValue, nil
 	}
-	return fmt.Sprintf("KLR-%s-%s-%s", prefix, dateStr, strings.ToUpper(suffix)), nil
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	counter.LastValue++
+	if err := tx.Model(&counter).Update("last_value", counter.LastValue).Error; err != nil {
+		return 0, err
+	}
+	return counter.LastValue, nil
 }
 
 func bookingTokenHash(rawToken string) string {
@@ -315,10 +350,6 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to secure booking access")
 	}
-	code, err := generateBookingCode(req.SessionDate, req.PackageCode)
-	if err != nil {
-		return apiError(c, fiber.StatusInternalServerError, "Failed to generate booking code")
-	}
 	amount := pkg.Price
 	if req.PaymentType == "dp" {
 		amount /= 2
@@ -331,7 +362,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		}
 		amount = req.CustomDPAmount
 	}
-	booking := models.Booking{Code: strings.ToUpper(code), PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
+	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
 	bookingCreateMu.Lock()
 	defer bookingCreateMu.Unlock()
 	persistBooking := func(db *gorm.DB) error {
@@ -343,11 +374,17 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 			if count >= slotCapacity {
 				return errSlotFull
 			}
+			sequence, err := nextBookingSequence(tx, req.SessionDate)
+			if err != nil {
+				return err
+			}
+			booking.Code = generateBookingCode(req.SessionDate, req.PackageCode, sequence)
 			return tx.Create(&booking).Error
 		})
 	}
 	if h.db.Dialector.Name() == "mysql" {
-		lockName := fmt.Sprintf("kleiora-slot-%s-%s", req.SessionDate, req.SessionHour)
+		bookingYear := strings.SplitN(req.SessionDate, "-", 2)[0]
+		lockName := fmt.Sprintf("kleiora-booking-year-%s", bookingYear)
 		err = h.db.Connection(func(conn *gorm.DB) error {
 			var acquired int
 			if lockErr := conn.Raw("SELECT GET_LOCK(?, 10)", lockName).Scan(&acquired).Error; lockErr != nil {
@@ -359,7 +396,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 			defer func() {
 				var released int
 				if releaseErr := conn.Raw("SELECT RELEASE_LOCK(?)", lockName).Scan(&released).Error; releaseErr != nil || released != 1 {
-					log.Printf("failed to release booking slot lock %s: %v", lockName, releaseErr)
+					log.Printf("failed to release annual booking-sequence lock %s: %v", lockName, releaseErr)
 				}
 			}()
 			return persistBooking(conn)

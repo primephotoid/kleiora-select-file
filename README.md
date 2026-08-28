@@ -59,6 +59,8 @@ Seeder membaca `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`, dan `ADMIN_ST
 
 Booking baru menerima token akses terpisah dari kode booking. Untuk booking lama yang belum memiliki token, admin dapat membuat token melalui `POST /api/v1/studio/bookings/{code}/access-token` (wajib autentikasi admin), lalu mengirim link `https://kleioragrads.com/booking#code={code}&token={access_token}` kepada klien. Fragment token langsung dihapus dari address bar setelah dibaca frontend.
 
+Nomor urut kode booking disimpan per tahun kalender sesi. Tahun baru dimulai lagi dari `001`, sedangkan booking dan galeri tahun sebelumnya tetap tersimpan.
+
 ## Verifikasi
 
 ```bash

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -14,8 +15,12 @@ import (
 )
 
 type DriveService struct {
-	apiKey string
+	apiKey     string
+	endpoint   string
+	httpClient *http.Client
 }
+
+const maxDrivePhotos = 1000
 
 func NewDriveService(apiKey string) *DriveService {
 	return &DriveService{apiKey: apiKey}
@@ -56,36 +61,61 @@ func (s *DriveService) FetchPhotosFromFolder(ctx context.Context, folderID strin
 		return nil, fmt.Errorf("GOOGLE_DRIVE_API_KEY is not configured")
 	}
 	var photos []models.Photo
-	driveService, err := drive.NewService(ctx, option.WithAPIKey(s.apiKey))
+	clientOptions := []option.ClientOption{option.WithAPIKey(s.apiKey)}
+	if s.endpoint != "" {
+		clientOptions = append(clientOptions, option.WithEndpoint(s.endpoint))
+	}
+	if s.httpClient != nil {
+		clientOptions = append(clientOptions, option.WithHTTPClient(s.httpClient))
+	}
+	driveService, err := drive.NewService(ctx, clientOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("initialize Google Drive client: %w", err)
 	}
 	query := fmt.Sprintf("'%s' in parents and mimeType contains 'image/' and trashed = false", folderID)
-	res, err := driveService.Files.List().Q(query).Fields("files(id, name, mimeType, thumbnailLink, webContentLink, imageMediaMetadata)").PageSize(200).Do()
-	if err != nil {
-		return nil, fmt.Errorf("list Google Drive folder: %w", err)
-	}
-	for _, f := range res.Files {
-		// thumbnailLink dari Drive bersifat sementara. URL berbasis file ID
-		// tetap stabil selama file dapat diakses secara publik.
-		thumbURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w600", f.Id)
-		viewURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w1600", f.Id)
-
-		width, height := 0, 0
-		if f.ImageMediaMetadata != nil {
-			width = int(f.ImageMediaMetadata.Width)
-			height = int(f.ImageMediaMetadata.Height)
+	pageToken := ""
+	for len(photos) < maxDrivePhotos {
+		remaining := int64(maxDrivePhotos - len(photos))
+		call := driveService.Files.List().
+			Q(query).
+			Fields("nextPageToken, files(id, name, mimeType, thumbnailLink, webContentLink, imageMediaMetadata)").
+			PageSize(remaining)
+		if pageToken != "" {
+			call = call.PageToken(pageToken)
 		}
+		res, err := call.Do()
+		if err != nil {
+			return nil, fmt.Errorf("list Google Drive folder: %w", err)
+		}
+		for _, f := range res.Files {
+			if len(photos) >= maxDrivePhotos {
+				break
+			}
+			// thumbnailLink dari Drive bersifat sementara. URL berbasis file ID
+			// tetap stabil selama file dapat diakses secara publik.
+			thumbURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w600", f.Id)
+			viewURL := fmt.Sprintf("https://lh3.googleusercontent.com/d/%s=w1600", f.Id)
 
-		photos = append(photos, models.Photo{
-			DriveFileID:  f.Id,
-			FileName:     f.Name,
-			MimeType:     f.MimeType,
-			ThumbnailURL: thumbURL,
-			ViewURL:      viewURL,
-			Width:        width,
-			Height:       height,
-		})
+			width, height := 0, 0
+			if f.ImageMediaMetadata != nil {
+				width = int(f.ImageMediaMetadata.Width)
+				height = int(f.ImageMediaMetadata.Height)
+			}
+
+			photos = append(photos, models.Photo{
+				DriveFileID:  f.Id,
+				FileName:     f.Name,
+				MimeType:     f.MimeType,
+				ThumbnailURL: thumbURL,
+				ViewURL:      viewURL,
+				Width:        width,
+				Height:       height,
+			})
+		}
+		if res.NextPageToken == "" {
+			break
+		}
+		pageToken = res.NextPageToken
 	}
 	return photos, nil
 }
