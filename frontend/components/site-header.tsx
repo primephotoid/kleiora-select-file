@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Menu, MessageCircle, X } from 'lucide-react';
 import { useState } from 'react';
 
@@ -9,8 +10,8 @@ export function SiteHeader() {
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[color:var(--surface-glass)] backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="font-serif text-3xl font-semibold tracking-tight">
-          Kleiora<span className="text-[var(--gold)]">.grads</span>
+        <Link href="/" className="shrink-0" aria-label="Kleiora Grads — Beranda">
+          <Image src="/brand/kleiora-logo.svg" alt="Kleiora Grads" width={215} height={48} priority className="h-11 w-auto" />
         </Link>
         <nav className="hidden items-center gap-8 text-sm font-semibold text-[var(--muted)] md:flex">
           <Link href="/" className="hover:text-[var(--text)]">Home</Link>
@@ -47,7 +48,7 @@ export function SiteFooter() {
     <footer className="border-t border-[var(--line)] bg-[var(--surface)] py-12">
       <div className="mx-auto flex max-w-6xl flex-col justify-between gap-8 px-6 sm:flex-row">
         <div>
-          <div className="font-serif text-2xl font-semibold">Kleiora<span className="text-[var(--gold)]">.grads</span></div>
+          <Image src="/brand/kleiora-logo.svg" alt="Kleiora Grads" width={185} height={41} className="h-10 w-auto" />
           <p className="mt-2 text-sm text-[var(--muted)]">Let&apos;s make your graduation moment unforgettable.</p>
         </div>
         <div className="text-sm text-[var(--muted)] sm:text-right">

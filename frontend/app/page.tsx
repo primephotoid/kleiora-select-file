@@ -14,7 +14,7 @@ const structuredData = {
       name: 'Kleiora Grads',
       url: 'https://kleioragrads.com',
       image: 'https://kleioragrads.com/images/hero-home.jpg',
-      logo: 'https://kleioragrads.com/icon.svg',
+      logo: 'https://kleioragrads.com/brand/kleiora-mark.svg',
       telephone: '+62-857-5252-8300',
       description: 'Jasa foto wisuda profesional untuk berbagai kota di Indonesia dengan booking online dan galeri pribadi.',
       address: {

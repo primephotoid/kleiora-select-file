@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 96" role="img" aria-labelledby="title desc">
+  <title id="title">Kleiora.grads</title>
+  <desc id="desc">Logo Kleiora Grads dengan monogram K berwarna emas</desc>
+  <defs>
+    <linearGradient id="panel" x1="8" y1="8" x2="84" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#29251f"/>
+      <stop offset="1" stop-color="#11100e"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="26" y1="22" x2="70" y2="75" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#efd7a5"/>
+      <stop offset="1" stop-color="#a87835"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="88" height="88" rx="24" fill="url(#panel)"/>
+  <path d="M27 21v54h12V56.6l5.5-6.2L61.5 75h14.2L52.6 42.3 72.1 21h-15L39 42V21H27Z" fill="url(#gold)"/>
+  <circle cx="74" cy="21" r="5.5" fill="#f5e5c5"/>
+  <text x="112" y="61" fill="#211e1a" font-family="Georgia, 'Times New Roman', serif" font-size="47" font-weight="600" letter-spacing="-1.6">Kleiora</text>
+  <text x="265" y="61" fill="#b48645" font-family="Georgia, 'Times New Roman', serif" font-size="47" font-weight="600" letter-spacing="-1.6">.grads</text>
+</svg>
