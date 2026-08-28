@@ -38,8 +38,8 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
-    shortcut: '/icon.svg',
+    icon: [{ url: '/icon.png', type: 'image/png', sizes: '512x512' }],
+    shortcut: '/icon.png',
   },
   openGraph: {
     type: 'website',

@@ -11,7 +11,7 @@ export function SiteHeader() {
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[color:var(--surface-glass)] backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="shrink-0" aria-label="Kleiora Grads — Beranda">
-          <Image src="/brand/kleiora-logo.svg" alt="Kleiora Grads" width={215} height={48} priority className="h-11 w-auto" />
+          <span className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} priority className="h-10 w-auto" /><span className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">Kleiora<span className="text-[#a54f3b]">.grads</span></span></span>
         </Link>
         <nav className="hidden items-center gap-8 text-sm font-semibold text-[var(--muted)] md:flex">
           <Link href="/" className="hover:text-[var(--text)]">Home</Link>
@@ -48,7 +48,7 @@ export function SiteFooter() {
     <footer className="border-t border-[var(--line)] bg-[var(--surface)] py-12">
       <div className="mx-auto flex max-w-6xl flex-col justify-between gap-8 px-6 sm:flex-row">
         <div>
-          <Image src="/brand/kleiora-logo.svg" alt="Kleiora Grads" width={185} height={41} className="h-10 w-auto" />
+          <div className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} className="h-10 w-auto" /><span className="font-serif text-2xl font-semibold">Kleiora<span className="text-[#a54f3b]">.grads</span></span></div>
           <p className="mt-2 text-sm text-[var(--muted)]">Let&apos;s make your graduation moment unforgettable.</p>
         </div>
         <div className="text-sm text-[var(--muted)] sm:text-right">

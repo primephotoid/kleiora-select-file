@@ -14,7 +14,7 @@ const structuredData = {
       name: 'Kleiora Grads',
       url: 'https://kleioragrads.com',
       image: 'https://kleioragrads.com/images/hero-home.jpg',
-      logo: 'https://kleioragrads.com/brand/kleiora-mark.svg',
+      logo: 'https://kleioragrads.com/brand/kleiora-mark-hd.png',
       telephone: '+62-857-5252-8300',
       description: 'Jasa foto wisuda profesional untuk berbagai kota di Indonesia dengan booking online dan galeri pribadi.',
       address: {
@@ -97,8 +97,10 @@ export default async function HomePage() {
                 <span className="h-2 w-2 rounded-full bg-[#1db954]" /> BOOKING 2026 DIBUKA
               </div>
               <p className="text-base font-medium text-white drop-shadow-md">Selamat datang di</p>
-              <h1 className="mt-1 font-serif text-6xl font-normal tracking-tight sm:text-7xl drop-shadow-lg text-white">
-                Kleiora.<span className="text-[var(--gold)]">grads</span>
+              <h1 className="mt-2 flex flex-col items-center">
+                <span className="sr-only">Kleiora Grads — Jasa Foto Wisuda Profesional</span>
+                <Image src="/brand/kleiora-mark-hd.png" alt="Logo lotus Kleiora Grads" width={1324} height={845} priority className="h-auto w-[190px] drop-shadow-lg sm:w-[270px]" />
+                <span className="mt-2 font-serif text-5xl font-semibold tracking-tight text-white drop-shadow-lg sm:text-7xl">Kleiora<span className="text-[#eda98a]">.grads</span></span>
                 <span className="mt-3 block font-sans text-sm font-bold uppercase tracking-[.22em] text-white sm:text-base">Jasa Foto Wisuda Profesional</span>
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-relaxed text-white drop-shadow-md">

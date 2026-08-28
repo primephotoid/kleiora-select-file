@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { MessageCircle, Star, X, Check, Loader2 } from 'lucide-react';
 import { API_BASE_URL, ReviewItem } from '@/lib/api';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[] }) {
   const [reviews, setReviews] = useState<ReviewItem[]>(initialReviews);
@@ -11,6 +12,8 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ client_name: '', rating: 5, comment: '' });
+
+  useBodyScrollLock(showForm);
 
   useEffect(() => {
     let active = true;
@@ -109,8 +112,8 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={event => event.target === event.currentTarget && closeReviewForm()}>
-          <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden overscroll-none bg-black/60 p-4 backdrop-blur-sm" onMouseDown={event => event.target === event.currentTarget && closeReviewForm()}>
+          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl bg-white p-8 shadow-2xl">
             <div className="flex justify-between items-start mb-6">
               <h3 className="font-serif text-2xl">{success ? 'Ulasan Terkirim' : 'Bagikan Pengalamanmu'}</h3>
               <button onClick={closeReviewForm} disabled={submitting} className="rounded-full bg-gray-100 p-2 hover:bg-gray-200 disabled:opacity-50" aria-label="Tutup"><X className="h-4 w-4" /></button>

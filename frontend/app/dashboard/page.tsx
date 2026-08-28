@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
@@ -63,6 +65,8 @@ export default function DashboardPage() {
   const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>(emptyPortfolioForm as PortfolioItem);
   const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+
+  useBodyScrollLock(Boolean(showCreate || showCreatePackage || showCreatePortfolio || paymentProofPreview));
 
   function askConfirmation(options: Omit<ConfirmationRequest, 'resolve'>) {
     return new Promise<boolean>(resolve => setConfirmation({ ...options, resolve }));
@@ -318,7 +322,7 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#f7f6f2]">
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link href="/" className="font-serif text-2xl font-semibold">Kleiora<span className="text-[var(--gold)]">.grads</span></Link>
+          <Link href="/" aria-label="Kleiora Grads — Beranda" className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} priority className="h-9 w-auto" /><span className="font-serif text-xl font-semibold sm:text-2xl">Kleiora<span className="text-[#a54f3b]">.grads</span></span></Link>
           <div className="flex items-center gap-3">
             <div className="hidden text-right sm:block"><p className="text-xs font-bold">Admin Kleiora.grads</p><p className="text-[10px] text-[var(--muted)]">Administrator studio</p></div>
             <button onClick={logout} className="btn-secondary px-4 py-2.5 text-xs"><LogOut className="h-4 w-4" />Keluar</button>
@@ -437,7 +441,7 @@ function PaymentProofModal({ code, url, processing, onClose, onVerify }: { code:
     };
   }, [onClose]);
 
-  return <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/65 p-0 backdrop-blur-sm sm:items-center sm:p-5" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+  return <div className="fixed inset-0 z-[90] flex items-end justify-center overflow-hidden overscroll-none bg-black/65 p-0 backdrop-blur-sm sm:items-center sm:p-5" onMouseDown={event => event.target === event.currentTarget && onClose()}>
     <div role="dialog" aria-modal="true" aria-labelledby="payment-proof-title" className="flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl sm:max-w-3xl sm:rounded-[2rem]">
       <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-6 py-5 sm:px-7"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Bukti pembayaran</p><h2 id="payment-proof-title" className="mt-1 font-serif text-2xl font-semibold">{code}</h2></div><button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--line)] transition hover:bg-[var(--surface2)]" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--surface2)] p-4 sm:p-6"><img src={url} alt={`Bukti pembayaran ${code}`} className="max-h-[65vh] max-w-full rounded-xl object-contain shadow-sm" /></div>
@@ -569,7 +573,7 @@ function GalleryCard({ gallery, copied, onCopy, onDelete }: { gallery: GalleryIt
 }
 
 function CreateGalleryModal({ form, setForm, bookings, creating, onClose, onSubmit }: { form: typeof emptyGalleryForm; setForm: React.Dispatch<React.SetStateAction<typeof emptyGalleryForm>>; bookings: BookingItem[]; creating: boolean; onClose: () => void; onSubmit: (event: FormEvent) => void }) {
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}><form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl sm:p-8"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Galeri klien</p><h2 className="mt-1 font-serif text-3xl">Buat galeri pilihan</h2><p className="mt-2 text-xs leading-5 text-[var(--muted)]">Folder Drive harus dapat dilihat oleh siapa saja yang memiliki link.</p></div><button type="button" onClick={onClose} disabled={creating} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button></div><div className="mt-7 space-y-4"><Field label="Hubungkan ke booking"><select value={form.booking_id} onChange={event => { const booking = bookings.find(item => item.id === Number(event.target.value)); setForm({ ...form, booking_id: event.target.value, title: booking ? `Foto Wisuda — ${booking.full_name}` : form.title, client_name: booking?.full_name || form.client_name, max_selection: 0 }); }} className="admin-field"><option value="">Tanpa booking</option>{bookings.filter(item => item.status === 'confirmed').map(item => <option key={item.id} value={item.id}>{item.full_name} · {item.package.name}</option>)}</select></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Judul galeri"><input required value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} className="admin-field" placeholder="Foto Wisuda — Nama" /></Field><Field label="Nama klien"><input value={form.client_name} onChange={event => setForm({ ...form, client_name: event.target.value })} className="admin-field" /></Field></div><Field label="Link folder Google Drive publik"><input required type="url" value={form.drive_url} onChange={event => setForm({ ...form, drive_url: event.target.value })} className="admin-field" placeholder="https://drive.google.com/drive/folders/..." /></Field><Field label="Kuota pilihan"><input min="0" type="number" value={form.max_selection} onChange={event => setForm({ ...form, max_selection: Number(event.target.value) })} className="admin-field" /><span className="mt-1 block text-[11px] text-[var(--muted)]">Isi 0 agar mengikuti kuota paket atau tanpa batas.</span></Field></div><div className="mt-7 flex gap-3"><button type="button" onClick={onClose} disabled={creating} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button><button disabled={creating} className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50">{creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{creating ? 'Memuat foto...' : 'Simpan & Muat Foto'}</button></div></form></div>;
+  return <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}><form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl sm:p-8"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Galeri klien</p><h2 className="mt-1 font-serif text-3xl">Buat galeri pilihan</h2><p className="mt-2 text-xs leading-5 text-[var(--muted)]">Folder Drive harus dapat dilihat oleh siapa saja yang memiliki link.</p></div><button type="button" onClick={onClose} disabled={creating} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button></div><div className="mt-7 space-y-4"><Field label="Hubungkan ke booking"><select value={form.booking_id} onChange={event => { const booking = bookings.find(item => item.id === Number(event.target.value)); setForm({ ...form, booking_id: event.target.value, title: booking ? `Foto Wisuda — ${booking.full_name}` : form.title, client_name: booking?.full_name || form.client_name, max_selection: 0 }); }} className="admin-field"><option value="">Tanpa booking</option>{bookings.filter(item => item.status === 'confirmed').map(item => <option key={item.id} value={item.id}>{item.full_name} · {item.package.name}</option>)}</select></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Judul galeri"><input required value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} className="admin-field" placeholder="Foto Wisuda — Nama" /></Field><Field label="Nama klien"><input value={form.client_name} onChange={event => setForm({ ...form, client_name: event.target.value })} className="admin-field" /></Field></div><Field label="Link folder Google Drive publik"><input required type="url" value={form.drive_url} onChange={event => setForm({ ...form, drive_url: event.target.value })} className="admin-field" placeholder="https://drive.google.com/drive/folders/..." /></Field><Field label="Kuota pilihan"><input min="0" type="number" value={form.max_selection} onChange={event => setForm({ ...form, max_selection: Number(event.target.value) })} className="admin-field" /><span className="mt-1 block text-[11px] text-[var(--muted)]">Isi 0 agar mengikuti kuota paket atau tanpa batas.</span></Field></div><div className="mt-7 flex gap-3"><button type="button" onClick={onClose} disabled={creating} className="btn-secondary flex-1 px-5 py-3.5 text-sm">Batal</button><button disabled={creating} className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50">{creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}{creating ? 'Memuat foto...' : 'Simpan & Muat Foto'}</button></div></form></div>;
 }
 
 function Stat({ icon, label, value, emphasis = false }: { icon: React.ReactNode; label: string; value: number; emphasis?: boolean }) { return <div className={`rounded-2xl border p-4 sm:p-5 ${emphasis ? 'border-amber-300 bg-amber-50' : 'border-[var(--line)] bg-white'}`}><div className="flex items-center justify-between"><span className={`flex h-9 w-9 items-center justify-center rounded-xl [&>svg]:h-4 [&>svg]:w-4 ${emphasis ? 'bg-amber-200 text-amber-900' : 'bg-[var(--surface2)] text-[var(--gold-dark)]'}`}>{icon}</span><strong className="font-serif text-3xl">{value}</strong></div><p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-[var(--muted)]">{label}</p></div>; }
@@ -638,8 +642,8 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-8">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-8">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Paket</p>
@@ -758,8 +762,8 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
   const imagePaths = form.image_path ? form.image_path.split(',') : [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-      <form onSubmit={onSubmit} className="w-full rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
+      <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Portofolio</p>
