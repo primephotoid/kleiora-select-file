@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -384,6 +385,84 @@ func TestListBookingsIsReadOnlyAndDoesNotFuzzyLinkGallery(t *testing.T) {
 	}
 	if gallery.BookingID != nil || booking.PaymentStatus != "pending" || booking.Status != "pending_payment" {
 		t.Fatal("listing bookings mutated a booking or fuzzy-linked an unrelated gallery")
+	}
+}
+
+func TestListBookingsSupportsServerSidePaginationSearchFilterAndSort(t *testing.T) {
+	app, db := bookingTestApp(t)
+	var pkg models.Package
+	if err := db.Where("code = ?", "premium").First(&pkg).Error; err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 13; index++ {
+		booking := models.Booking{
+			Code: fmt.Sprintf("KLR-TEST-%03d", index), PackageID: pkg.ID,
+			FullName: fmt.Sprintf("Client %02d", index), CampusName: "Campus", WhatsApp: fmt.Sprintf("08120000%04d", index),
+			SessionDate: "2099-09-01", SessionHour: "10", SessionLocation: "Makassar",
+			PaymentType: "dp", AmountDue: int64(index * 1000), PaymentStatus: "pending", Status: "pending_payment",
+		}
+		if index%3 == 0 {
+			booking.PaymentStatus = "submitted"
+		}
+		if index%4 == 0 {
+			booking.PaymentStatus = "verified"
+			booking.Status = "completed"
+		}
+		if err := db.Create(&booking).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	response, err := app.Test(httptest.NewRequest(http.MethodGet, "/studio/bookings?page=2&per_page=5&search=client&sort_by=code&sort_dir=asc", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Bookings []models.Booking `json:"bookings"`
+		Meta     struct {
+			Page       int `json:"page"`
+			PerPage    int `json:"per_page"`
+			Total      int `json:"total"`
+			TotalPages int `json:"total_pages"`
+		} `json:"meta"`
+		Summary struct {
+			Total       int `json:"total"`
+			NeedsAction int `json:"needs_action"`
+			Confirmed   int `json:"confirmed"`
+			Completed   int `json:"completed"`
+		} `json:"summary"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != fiber.StatusOK || len(payload.Bookings) != 5 {
+		t.Fatalf("expected second page with 5 rows, got status %d and %d rows", response.StatusCode, len(payload.Bookings))
+	}
+	if payload.Bookings[0].Code != "KLR-TEST-006" || payload.Bookings[4].Code != "KLR-TEST-010" {
+		t.Fatalf("unexpected sorted page: %s ... %s", payload.Bookings[0].Code, payload.Bookings[4].Code)
+	}
+	if payload.Meta.Page != 2 || payload.Meta.PerPage != 5 || payload.Meta.Total != 13 || payload.Meta.TotalPages != 3 {
+		t.Fatalf("unexpected pagination metadata: %+v", payload.Meta)
+	}
+	if payload.Summary.Total != 13 || payload.Summary.NeedsAction != 3 || payload.Summary.Completed != 3 {
+		t.Fatalf("unexpected booking summary: %+v", payload.Summary)
+	}
+
+	filtered, err := app.Test(httptest.NewRequest(http.MethodGet, "/studio/bookings?filter=needs_action&per_page=10", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var filteredPayload struct {
+		Bookings []models.Booking `json:"bookings"`
+		Meta     struct {
+			Total int `json:"total"`
+		} `json:"meta"`
+	}
+	if err := json.NewDecoder(filtered.Body).Decode(&filteredPayload); err != nil {
+		t.Fatal(err)
+	}
+	if filteredPayload.Meta.Total != 3 || len(filteredPayload.Bookings) != 3 {
+		t.Fatalf("expected 3 bookings needing action, got total %d and %d rows", filteredPayload.Meta.Total, len(filteredPayload.Bookings))
 	}
 }
 

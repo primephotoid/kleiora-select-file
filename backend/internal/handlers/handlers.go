@@ -491,16 +491,98 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 }
 
 func (h *Handler) ListBookings(c *fiber.Ctx) error {
-	var bookings []models.Booking
-	query := h.db.Preload("Package").Preload("Gallery").Preload("Gallery.Selection").Order("created_at desc")
-	if status := c.Query("status"); status != "" {
-		query = query.Where("status = ?", status)
+	page, err := strconv.Atoi(c.Query("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
 	}
-	if err := query.Find(&bookings).Error; err != nil {
+	perPage, err := strconv.Atoi(c.Query("per_page", "10"))
+	if err != nil || perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	type bookingSummary struct {
+		Total       int64 `json:"total"`
+		NeedsAction int64 `json:"needs_action"`
+		Confirmed   int64 `json:"confirmed"`
+		Completed   int64 `json:"completed"`
+	}
+	var summary bookingSummary
+	if err := h.db.Model(&models.Booking{}).Select(`
+		COUNT(*) AS total,
+		COALESCE(SUM(CASE WHEN payment_status = 'submitted' AND status <> 'completed' THEN 1 ELSE 0 END), 0) AS needs_action,
+		COALESCE(SUM(CASE WHEN (status = 'confirmed' OR payment_status = 'verified') AND status <> 'completed' THEN 1 ELSE 0 END), 0) AS confirmed,
+		COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed
+	`).Scan(&summary).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to load booking summary")
+	}
+
+	query := h.db.Model(&models.Booking{})
+	filter := strings.ToLower(strings.TrimSpace(c.Query("filter", "all")))
+	switch filter {
+	case "needs_action":
+		query = query.Where("payment_status = ? AND status <> ?", "submitted", "completed")
+	case "confirmed":
+		query = query.Where("(status = ? OR payment_status = ?) AND status <> ?", "confirmed", "verified", "completed")
+	case "completed":
+		query = query.Where("status = ?", "completed")
+	default:
+		if status := strings.TrimSpace(c.Query("status")); status != "" {
+			query = query.Where("status = ?", status)
+		}
+	}
+
+	if search := strings.ToLower(strings.TrimSpace(c.Query("search"))); search != "" {
+		like := "%" + search + "%"
+		query = query.Where(`LOWER(full_name) LIKE ? OR LOWER(code) LIKE ? OR LOWER(whats_app) LIKE ? OR LOWER(campus_name) LIKE ? OR package_id IN (SELECT id FROM packages WHERE LOWER(name) LIKE ?)`, like, like, like, like, like)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Failed to count bookings")
+	}
+	totalPages := int((total + int64(perPage) - 1) / int64(perPage))
+	if totalPages == 0 {
+		page = 1
+	} else if page > totalPages {
+		page = totalPages
+	}
+
+	sortColumns := map[string]string{
+		"created_at":   "created_at",
+		"session_date": "session_date",
+		"full_name":    "full_name",
+		"code":         "code",
+		"amount_due":   "amount_due",
+	}
+	sortColumn := sortColumns[c.Query("sort_by", "created_at")]
+	if sortColumn == "" {
+		sortColumn = "created_at"
+	}
+	sortDirection := strings.ToLower(c.Query("sort_dir", "desc"))
+	if sortDirection != "asc" {
+		sortDirection = "desc"
+	}
+	order := sortColumn + " " + sortDirection
+	if sortColumn == "session_date" {
+		order += ", session_hour " + sortDirection
+	}
+	order += ", id desc"
+
+	var bookings []models.Booking
+	if err := query.Preload("Package").Preload("Gallery").Preload("Gallery.Selection").Order(order).Offset((page - 1) * perPage).Limit(perPage).Find(&bookings).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to load bookings")
 	}
 
-	return c.JSON(fiber.Map{"bookings": bookings})
+	return c.JSON(fiber.Map{
+		"bookings": bookings,
+		"summary":  summary,
+		"meta": fiber.Map{
+			"page": page, "per_page": perPage, "total": total, "total_pages": totalPages,
+		},
+	})
 }
 
 func (h *Handler) CompleteBooking(c *fiber.Ctx) error {

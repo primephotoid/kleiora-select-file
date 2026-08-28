@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,6 +17,9 @@ interface GalleryItem {
 
 type DashboardTab = 'bookings' | 'galleries' | 'packages' | 'portfolios' | 'reviews';
 type BookingFilter = 'all' | 'needs_action' | 'confirmed' | 'completed';
+type BookingSort = 'created_at' | 'session_date' | 'full_name' | 'code' | 'amount_due';
+interface BookingMeta { page: number; per_page: number; total: number; total_pages: number }
+interface BookingSummary { total: number; needs_action: number; confirmed: number; completed: number }
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
 const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true };
@@ -38,6 +41,14 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<DashboardTab>('bookings');
   const [filter, setFilter] = useState<BookingFilter>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [bookingPage, setBookingPage] = useState(1);
+  const [bookingPerPage, setBookingPerPage] = useState(10);
+  const [bookingSort, setBookingSort] = useState<BookingSort>('created_at');
+  const [bookingSortDirection, setBookingSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [bookingMeta, setBookingMeta] = useState<BookingMeta>({ page: 1, per_page: 10, total: 0, total_pages: 0 });
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary>({ total: 0, needs_action: 0, confirmed: 0, completed: 0 });
+  const bookingQueryReady = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
   const [showCreatePackage, setShowCreatePackage] = useState(false);
   const [copied, setCopied] = useState('');
@@ -52,18 +63,47 @@ export default function DashboardPage() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
+  function bookingQuery() {
+    const params = new URLSearchParams({
+      page: String(bookingPage), per_page: String(bookingPerPage), filter,
+      sort_by: bookingSort, sort_dir: bookingSortDirection,
+    });
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    return params.toString();
+  }
+
+  function applyBookingData(data: { bookings: BookingItem[]; meta: BookingMeta; summary: BookingSummary }) {
+    setBookings(data.bookings);
+    setBookingMeta(data.meta);
+    setBookingSummary(data.summary);
+    if (data.meta.total_pages > 0 && bookingPage > data.meta.total_pages) setBookingPage(data.meta.total_pages);
+  }
+
+  async function loadBookings(background = true) {
+    if (background) setRefreshing(true);
+    setError('');
+    try {
+      const data = await apiRequest<{ bookings: BookingItem[]; meta: BookingMeta; summary: BookingSummary }>(`/studio/bookings?${bookingQuery()}`, { headers: authHeaders() });
+      applyBookingData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Data booking gagal dimuat.');
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function load(background = false) {
     background ? setRefreshing(true) : setLoading(true);
     setError('');
     try {
       const [bookingData, galleryData, packageData, portfolioData, reviewData] = await Promise.all([
-        apiRequest<{ bookings: BookingItem[] }>('/studio/bookings', { headers: authHeaders() }),
+        apiRequest<{ bookings: BookingItem[]; meta: BookingMeta; summary: BookingSummary }>(`/studio/bookings?${bookingQuery()}`, { headers: authHeaders() }),
         apiRequest<{ galleries: GalleryItem[] }>('/studio/galleries', { headers: authHeaders() }),
         apiRequest<{ packages: PackageItem[] }>('/studio/packages', { headers: authHeaders() }),
         apiRequest<{ portfolios: PortfolioItem[] }>('/studio/portfolios', { headers: authHeaders() }),
         apiRequest<{ reviews: ReviewItem[] }>('/studio/reviews', { headers: authHeaders() }),
       ]);
-      setBookings(bookingData.bookings);
+      applyBookingData(bookingData);
       setGalleries(galleryData.galleries);
       setPackages(packageData.packages);
       setPortfolios(portfolioData.portfolios);
@@ -84,32 +124,33 @@ export default function DashboardPage() {
     load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setBookingPage(1);
+      setDebouncedSearch(search.trim());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (!bookingQueryReady.current) {
+      bookingQueryReady.current = true;
+      return;
+    }
+    loadBookings(true);
+  }, [bookingPage, bookingPerPage, debouncedSearch, filter, bookingSort, bookingSortDirection]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const isGalleryActive = (g: GalleryItem) => g.status === 'active' && (!g.selection || !g.selection.total_selected);
 
   const stats = useMemo(() => {
-    const completedCount = bookings.filter(item => item.status === 'completed').length;
-    const confirmedCount = bookings.filter(item => (item.status === 'confirmed' || item.payment_status === 'verified') && item.status !== 'completed').length;
     return {
-      total: bookings.length,
-      needsAction: bookings.filter(item => item.payment_status === 'submitted' && item.status !== 'completed').length,
-      confirmed: confirmedCount,
-      completed: completedCount,
+      total: bookingSummary.total,
+      needsAction: bookingSummary.needs_action,
+      confirmed: bookingSummary.confirmed,
+      completed: bookingSummary.completed,
       activeGalleries: galleries.filter(isGalleryActive).length,
     };
-  }, [bookings, galleries]);
-
-  const filteredBookings = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    return bookings.filter(item => {
-      const isCompleted = item.status === 'completed';
-      const matchesFilter = filter === 'all' ||
-        (filter === 'needs_action' && item.payment_status === 'submitted' && !isCompleted) ||
-        (filter === 'confirmed' && (item.status === 'confirmed' || item.payment_status === 'verified') && !isCompleted) ||
-        (filter === 'completed' && isCompleted);
-      const matchesSearch = !keyword || [item.full_name, item.code, item.whatsapp, item.campus_name, item.package.name].some(value => value?.toLowerCase().includes(keyword));
-      return matchesFilter && matchesSearch;
-    });
-  }, [bookings, filter, search]);
+  }, [bookingSummary, galleries]);
 
   async function verify(code: string) {
     setProcessing(code); setError('');
@@ -118,7 +159,7 @@ export default function DashboardPage() {
       if (!proofVersion) throw new Error('Buka bukti pembayaran terbaru sebelum melakukan verifikasi.');
       await apiRequest(`/studio/bookings/${code}/verify-payment`, { method: 'PATCH', headers: { ...authHeaders(), 'X-Payment-Proof-Version': proofVersion } });
       setProofVersions(current => { const next = { ...current }; delete next[code]; return next; });
-      await load(true);
+      await loadBookings(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Verifikasi gagal.'); }
     finally { setProcessing(''); }
   }
@@ -228,7 +269,7 @@ export default function DashboardPage() {
     setRefreshing(true); setError('');
     try {
       await apiRequest(`/studio/bookings/${code}`, { method: 'DELETE', headers: authHeaders() });
-      await load(true);
+      await loadBookings(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Booking gagal dihapus.'); setRefreshing(false); }
   }
 
@@ -236,7 +277,7 @@ export default function DashboardPage() {
     setProcessing(code); setError('');
     try {
       await apiRequest(`/studio/bookings/${code}/complete`, { method: 'PATCH', headers: authHeaders() });
-      await load(true);
+      await loadBookings(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui status booking.'); }
     finally { setProcessing(''); }
   }
@@ -284,7 +325,7 @@ export default function DashboardPage() {
         </section>
 
         <div className="mt-8 flex gap-1 rounded-2xl border border-[var(--line)] bg-white p-1.5 sm:w-fit flex-wrap">
-          <TabButton active={tab === 'bookings'} onClick={() => setTab('bookings')} icon={<ReceiptText />} label={`Booking (${bookings.length})`} />
+          <TabButton active={tab === 'bookings'} onClick={() => setTab('bookings')} icon={<ReceiptText />} label={`Booking (${bookingSummary.total})`} />
           <TabButton active={tab === 'galleries'} onClick={() => setTab('galleries')} icon={<Images />} label={`Galeri (${galleries.filter(isGalleryActive).length})`} />
           <TabButton active={tab === 'packages'} onClick={() => setTab('packages')} icon={<PackageIcon />} label={`Paket (${packages.length})`} />
           <TabButton active={tab === 'portfolios'} onClick={() => setTab('portfolios')} icon={<Images />} label={`Portofolio (${portfolios.length})`} />
@@ -295,9 +336,15 @@ export default function DashboardPage() {
           <section className="mt-5">
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative flex-1 sm:max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={event => setSearch(event.target.value)} className="w-full rounded-xl bg-[var(--surface2)] py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-[var(--gold)]" placeholder="Cari nama, kode, WhatsApp..." /></div>
-              <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0"><FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>Semua</FilterButton><FilterButton active={filter === 'needs_action'} onClick={() => setFilter('needs_action')}>Perlu diperiksa</FilterButton><FilterButton active={filter === 'confirmed'} onClick={() => setFilter('confirmed')}>Terverifikasi</FilterButton><FilterButton active={filter === 'completed'} onClick={() => setFilter('completed')}>Selesai</FilterButton><button onClick={() => load(true)} disabled={refreshing} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Muat ulang'}</button></div>
+              <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0"><FilterButton active={filter === 'all'} onClick={() => { setBookingPage(1); setFilter('all'); }}>Semua</FilterButton><FilterButton active={filter === 'needs_action'} onClick={() => { setBookingPage(1); setFilter('needs_action'); }}>Perlu diperiksa</FilterButton><FilterButton active={filter === 'confirmed'} onClick={() => { setBookingPage(1); setFilter('confirmed'); }}>Terverifikasi</FilterButton><FilterButton active={filter === 'completed'} onClick={() => { setBookingPage(1); setFilter('completed'); }}>Selesai</FilterButton><button onClick={() => loadBookings(true)} disabled={refreshing} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Muat ulang'}</button></div>
             </div>
-            <div className="mt-4 space-y-3">{filteredBookings.map(item => <BookingCard key={item.id} item={item} processing={processing} onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete} onCreateGallery={() => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }} />)}{!filteredBookings.length && <Empty icon={<Search />} title="Booking tidak ditemukan" text="Coba ubah kata pencarian atau filter status." />}</div>
+            <BookingTable
+              bookings={bookings} meta={bookingMeta} processing={processing} sort={bookingSort} sortDirection={bookingSortDirection}
+              onSort={column => { if (bookingSort === column) setBookingSortDirection(value => value === 'asc' ? 'desc' : 'asc'); else { setBookingSort(column); setBookingSortDirection('asc'); } setBookingPage(1); }}
+              onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete}
+              onCreateGallery={item => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }}
+              onPageChange={setBookingPage} perPage={bookingPerPage} onPerPageChange={value => { setBookingPage(1); setBookingPerPage(value); }}
+            />
           </section>
         ) : tab === 'galleries' ? (
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryActive).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} />)}{!galleries.filter(isGalleryActive).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
@@ -350,6 +397,93 @@ export default function DashboardPage() {
       <style jsx global>{`.admin-field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.admin-field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}`}</style>
     </div>
   );
+}
+
+interface BookingTableProps {
+  bookings: BookingItem[]; meta: BookingMeta; processing: string; sort: BookingSort; sortDirection: 'asc' | 'desc'; perPage: number;
+  onSort: (column: BookingSort) => void; onVerify: (code: string) => void; onViewProof: (code: string) => void;
+  onCreateGallery: (item: BookingItem) => void; onDelete: (code: string) => void; onComplete: (code: string) => void;
+  onPageChange: (page: number) => void; onPerPageChange: (perPage: number) => void;
+}
+
+function BookingTable(props: BookingTableProps) {
+  const { bookings, meta, sort, sortDirection, onSort, onPageChange, perPage, onPerPageChange } = props;
+  const start = meta.total ? (meta.page - 1) * meta.per_page + 1 : 0;
+  const end = Math.min(meta.page * meta.per_page, meta.total);
+
+  if (!bookings.length) return <div className="mt-4"><Empty icon={<Search />} title="Booking tidak ditemukan" text="Coba ubah kata pencarian atau filter status." /></div>;
+
+  return <>
+    <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-[var(--line)] bg-white lg:block">
+      <table className="w-full min-w-[1050px] text-left text-sm">
+        <thead className="border-b border-[var(--line)] bg-[var(--surface2)] text-[11px] uppercase tracking-wider text-[var(--muted)]">
+          <tr>
+            <SortableHeader label="Klien" column="full_name" active={sort} direction={sortDirection} onSort={onSort} />
+            <SortableHeader label="Jadwal" column="session_date" active={sort} direction={sortDirection} onSort={onSort} />
+            <th className="px-4 py-3 font-bold">Paket</th>
+            <SortableHeader label="Pembayaran" column="amount_due" active={sort} direction={sortDirection} onSort={onSort} />
+            <th className="px-4 py-3 font-bold">Status</th>
+            <th className="px-4 py-3 text-right font-bold">Aksi</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--line)]">
+          {bookings.map(item => <BookingTableRow key={item.id} item={item} {...props} />)}
+        </tbody>
+      </table>
+    </div>
+    <div className="mt-4 space-y-3 lg:hidden">
+      {bookings.map(item => <BookingCard key={item.id} item={item} processing={props.processing} onVerify={props.onVerify} onViewProof={props.onViewProof} onDelete={props.onDelete} onComplete={props.onComplete} onCreateGallery={() => props.onCreateGallery(item)} />)}
+    </div>
+    <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
+        <span>Menampilkan <strong className="text-[var(--text)]">{start}–{end}</strong> dari <strong className="text-[var(--text)]">{meta.total}</strong></span>
+        <label className="flex items-center gap-2">Baris
+          <select value={perPage} onChange={event => onPerPageChange(Number(event.target.value))} className="rounded-lg border border-[var(--line)] bg-white px-2 py-1.5 text-xs text-[var(--text)]">
+            <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option>
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <button onClick={() => onPageChange(meta.page - 1)} disabled={meta.page <= 1} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">Sebelumnya</button>
+        <span className="whitespace-nowrap text-xs text-[var(--muted)]">Halaman <strong className="text-[var(--text)]">{meta.page}</strong> dari <strong className="text-[var(--text)]">{Math.max(meta.total_pages, 1)}</strong></span>
+        <button onClick={() => onPageChange(meta.page + 1)} disabled={meta.page >= meta.total_pages} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">Berikutnya</button>
+      </div>
+    </div>
+  </>;
+}
+
+function SortableHeader({ label, column, active, direction, onSort }: { label: string; column: BookingSort; active: BookingSort; direction: 'asc' | 'desc'; onSort: (column: BookingSort) => void }) {
+  return <th className="px-4 py-3 font-bold"><button onClick={() => onSort(column)} className="inline-flex items-center gap-1 hover:text-[var(--text)]">{label}<span aria-hidden="true" className={active === column ? 'text-[var(--gold-dark)]' : 'text-transparent'}>{direction === 'asc' ? '▲' : '▼'}</span></button></th>;
+}
+
+function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: BookingTableProps & { item: BookingItem }) {
+  const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
+  const isCompleted = item.status === 'completed';
+  const hasGallery = !!item.gallery;
+  const sendReceipt = () => {
+    const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const message = `Halo kak *${item.full_name}*, terima kasih ya!\n\nPembayaran untuk sesi foto wisuda dengan Kleiora.grads (*Kode: ${item.code}*) sudah kami terima dan verifikasi.\n\n*Detail Sesi:*\n● Tanggal: ${dateStr}\n● Waktu: ${item.session_hour}.00 WITA\n● Lokasi: ${item.session_location}\n● Paket: ${item.package.name}\n\nKami tunggu kehadirannya ya kak!`;
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+  const sendGallery = () => {
+    if (!item.gallery?.slug) return;
+    const message = `Halo kak *${item.full_name}*, galeri foto kakak sudah siap. Silakan lihat dan pilih foto melalui link berikut:\n\n● ${window.location.origin}/g/${item.gallery.slug}`;
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+  const smallButton = 'inline-flex items-center justify-center gap-1 rounded-full border border-[var(--line)] px-2.5 py-1.5 text-[11px] font-bold disabled:opacity-40';
+
+  return <tr className="align-top hover:bg-[var(--surface2)]/50">
+    <td className="px-4 py-4"><div className="font-bold">{item.full_name}</div><div className="mt-1 text-xs text-[var(--muted)]">{item.campus_name}</div><div className="mt-1 font-mono text-[11px] text-[var(--muted)]">{item.code}</div><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><MessageCircle className="h-3 w-3" />{item.whatsapp}</a></td>
+    <td className="px-4 py-4"><div className="font-semibold">{formatDate(item.session_date)} · {item.session_hour}.00</div><div className="mt-2 flex items-center gap-1 text-xs text-[var(--muted)]"><MapPin className="h-3 w-3" />{item.session_location}</div></td>
+    <td className="px-4 py-4"><div className="font-semibold">{item.package.name}</div></td>
+    <td className="px-4 py-4"><div className="font-semibold">{formatRupiah(item.amount_due)}</div><div className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : item.payment_type === 'dp_custom' ? 'DP Custom' : 'Lunas'}</div></td>
+    <td className="px-4 py-4"><Status value={isCompleted ? 'completed' : item.payment_status} /></td>
+    <td className="px-4 py-4"><div className="ml-auto flex max-w-[270px] flex-wrap justify-end gap-1.5">
+      {item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className={smallButton}><ExternalLink className="h-3 w-3" />Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className={`${smallButton} border-emerald-700 bg-emerald-700 text-white`}><CheckCircle2 className="h-3 w-3" />Verifikasi</button></>}
+      {isCompleted ? hasGallery && <button onClick={sendGallery} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button> : hasGallery ? <><button onClick={sendGallery} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
+      <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>
+    </div></td>
+  </tr>;
 }
 
 function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void }) {
