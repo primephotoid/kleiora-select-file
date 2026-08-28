@@ -138,7 +138,7 @@ export default async function HomePage() {
             <div className="mx-auto max-w-6xl px-6">
               <div className="mb-12 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Portfolio</p>
+                  <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Portofolio</p>
                   <h2 className="mt-3 font-serif text-4xl font-medium">Momen yang kami abadikan</h2>
                 </div>
                 <p className="max-w-sm text-sm leading-6 text-[var(--muted)]">Setiap sesi dirancang agar kamu tetap nyaman dan pulang dengan foto yang terasa personal.</p>
