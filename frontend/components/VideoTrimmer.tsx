@@ -130,7 +130,7 @@ export function VideoTrimmer({ videoSrc, fileName, clipDuration = 10, onConfirm,
   }, [startTime, clipDuration, fileName, onConfirm]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[200] flex items-end justify-center overflow-hidden bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4">
       <div className="w-full max-w-xl rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8">
         {/* Header */}
         <div className="flex items-start justify-between">
