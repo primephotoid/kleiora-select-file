@@ -136,6 +136,13 @@ func migrateLegacyPaymentProofs(db *gorm.DB, cfg *config.Config) error {
 }
 
 func seedPackages(db *gorm.DB) error {
+	var count int64
+	db.Model(&models.Package{}).Count(&count)
+	if count > 0 {
+		// Database already seeded/modified by admin, do not aggressively re-seed
+		return nil
+	}
+
 	packages := []models.Package{
 		{Code: "personal", Name: "Personal Package", Description: "1 Wisudawan beserta keluarga.", Price: 400000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 30, ImagePath: "/images/package-basic.jpg", IsActive: true},
 		{Code: "couple-gold", Name: "Couple Package Gold", Description: "1 Wisudawan dan partner.", Price: 450000, DurationHours: 1, DurationLabel: "1 jam", LocationCount: 1, EditedPhotos: 35, ImagePath: "/images/package-standard.jpg", IsActive: true},
