@@ -190,11 +190,6 @@ function BookingFlow() {
     apiRequest<{ packages: PackageItem[] }>('/packages')
       .then(data => {
         const pkgs = [...data.packages];
-        const cinematicIndex = pkgs.findIndex(pkg => pkg.code === 'cinematic');
-        if (cinematicIndex !== -1) {
-          const [cinematicPkg] = pkgs.splice(cinematicIndex, 1);
-          pkgs.push(cinematicPkg);
-        }
         setPackages(pkgs);
         if (!selectedCode && pkgs[0]) setSelectedCode(pkgs[0].code);
       })

@@ -266,7 +266,7 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 
 func (h *Handler) ListPackages(c *fiber.Ctx) error {
 	var packages []models.Package
-	if err := h.db.Where("is_active = ?", true).Order("price asc").Find(&packages).Error; err != nil {
+	if err := h.db.Where("is_active = ?", true).Order("sort_order asc, price asc").Find(&packages).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to load packages")
 	}
 	return c.JSON(fiber.Map{"packages": packages})
@@ -868,7 +868,7 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 
 func (h *Handler) ListAllPackages(c *fiber.Ctx) error {
 	var packages []models.Package
-	if err := h.db.Order("price asc").Find(&packages).Error; err != nil {
+	if err := h.db.Order("sort_order asc, price asc").Find(&packages).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to load packages")
 	}
 	return c.JSON(fiber.Map{"packages": packages})
@@ -980,6 +980,31 @@ func (h *Handler) UploadPackageImage(c *fiber.Ctx) error {
 		"message": "File berhasil diupload",
 		"path":    "/" + filepath, // Asumsikan uploads/ disajikan di root public (e.g. /uploads/...)
 	})
+}
+
+func (h *Handler) ReorderPackages(c *fiber.Ctx) error {
+	var req []struct {
+		ID        uint `json:"id"`
+		SortOrder int  `json:"sort_order"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		for _, item := range req {
+			if err := tx.Model(&models.Package{}).Where("id = ?", item.ID).Update("sort_order", item.SortOrder).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal mengurutkan paket")
+	}
+
+	return c.JSON(fiber.Map{"message": "Urutan paket berhasil diperbarui"})
 }
 
 // --- PORTFOLIO MANAGEMENT ---

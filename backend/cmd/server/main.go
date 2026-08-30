@@ -279,6 +279,7 @@ func main() {
 
 	studio.Get("/packages", h.ListAllPackages)
 	studio.Post("/packages", h.CreatePackage)
+	studio.Patch("/packages/reorder", h.ReorderPackages)
 	studio.Put("/packages/:id", h.UpdatePackage)
 	studio.Delete("/packages/:id", h.DeletePackage)
 	studio.Post("/packages/upload-image", h.UploadPackageImage)

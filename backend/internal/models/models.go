@@ -46,6 +46,7 @@ type Package struct {
 	IncludesTeaser bool      `json:"includes_teaser"`
 	ImagePath      string    `gorm:"size:512" json:"image_path"`
 	IsActive       bool      `gorm:"not null;default:true" json:"is_active"`
+	SortOrder      int       `gorm:"not null;default:0" json:"sort_order"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

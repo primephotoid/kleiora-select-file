@@ -35,6 +35,7 @@ export interface PackageItem {
   includes_teaser: boolean;
   image_path: string;
   is_active: boolean;
+  sort_order: number;
 }
 
 export interface BookingItem {
@@ -106,6 +107,14 @@ export async function uploadPackageImage(file: File, token: string): Promise<{ m
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
+  });
+}
+
+export async function reorderPackages(items: { id: number; sort_order: number }[], token: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>('/studio/packages/reorder', {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(items),
   });
 }
 

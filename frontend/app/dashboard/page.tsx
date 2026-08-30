@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
-  ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud
+  Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
+  ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary } from '@/lib/api';
+import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary, reorderPackages } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
@@ -239,8 +240,36 @@ export default function DashboardPage() {
       }
       setShowCreatePackage(false); setPkgForm(emptyPackageForm); await load(true); setTab('packages');
     } catch (err) { setError(err instanceof Error ? err.message : 'Paket gagal disimpan.'); }
-    finally { setCreating(false); }
+    finally {
+      setCreating(false);
+    }
   }
+
+  const movePackage = async (index: number, direction: 'left' | 'right') => {
+    if (direction === 'left' && index === 0) return;
+    if (direction === 'right' && index === packages.length - 1) return;
+
+    const newPackages = [...packages];
+    const targetIndex = direction === 'left' ? index - 1 : index + 1;
+    
+    const temp = newPackages[index];
+    newPackages[index] = newPackages[targetIndex];
+    newPackages[targetIndex] = temp;
+
+    const payload = newPackages.map((pkg, i) => ({
+      id: pkg.id,
+      sort_order: i
+    }));
+
+    setPackages(newPackages); // optimistic
+
+    try {
+      await reorderPackages(payload, localStorage.getItem('kleiora_token') || '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menyimpan urutan paket.');
+      load(false);
+    }
+  };
 
   async function deletePackage(id: number) {
     if (!await askConfirmation({ title: 'Hapus paket?', description: 'Paket akan dihapus dari dashboard dan tidak lagi tersedia untuk booking baru.', confirmLabel: 'Hapus paket' })) return;
@@ -382,8 +411,17 @@ export default function DashboardPage() {
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryVisible).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} />)}{!galleries.filter(isGalleryVisible).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
         ) : tab === 'packages' ? (
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {packages.map(pkg => (
-              <PackageCard key={pkg.id} pkg={pkg} onEdit={() => { setPkgForm(pkg); setShowCreatePackage(true); }} onDelete={() => deletePackage(pkg.id)} />
+            {packages.map((pkg, i) => (
+              <PackageCard 
+                key={pkg.id} 
+                pkg={pkg} 
+                onEdit={() => { setPkgForm(pkg); setShowCreatePackage(true); }} 
+                onDelete={() => deletePackage(pkg.id)}
+                canMoveLeft={i > 0}
+                canMoveRight={i < packages.length - 1}
+                onMoveLeft={() => movePackage(i, 'left')}
+                onMoveRight={() => movePackage(i, 'right')}
+              />
             ))}
             {!packages.length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<PackageIcon />} title="Belum ada paket" text="Buat paket baru untuk ditampilkan di halaman pemesanan." /></div>}
           </section>
@@ -433,7 +471,7 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {analytics?.views_by_path?.map(p => (
                   <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm">
-                    <span className="text-gray-600">{p.path}</span>
+                    <span className="text-gray-600">{p.path === '/' ? 'home' : p.path}</span>
                     <span className="font-semibold">{p.count}</span>
                   </div>
                 ))}
@@ -612,10 +650,12 @@ function Empty({ icon, title, text }: { icon: React.ReactNode; title: string; te
 function DashboardSkeleton() { return <div className="mt-5 space-y-3">{[1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl border border-[var(--line)] bg-white" />)}</div>; }
 function formatDate(value: string) { const date = new Date(`${value}T00:00:00`); return new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
 
-function PackageCard({ pkg, onEdit, onDelete }: { pkg: PackageItem; onEdit: () => void; onDelete: () => void }) {
+function PackageCard({ pkg, onEdit, onDelete, canMoveLeft, canMoveRight, onMoveLeft, onMoveRight }: { pkg: PackageItem; onEdit: () => void; onDelete: () => void; canMoveLeft?: boolean; canMoveRight?: boolean; onMoveLeft?: () => void; onMoveRight?: () => void }) {
   return (
     <article className="overflow-hidden rounded-2xl border border-[var(--line)] bg-white relative flex flex-col">
       <div className="absolute right-3 top-3 z-10 flex gap-2">
+        {canMoveLeft && <button onClick={onMoveLeft} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-sm backdrop-blur transition hover:bg-gray-100 hover:text-gray-900" aria-label="Geser kiri"><ChevronLeft className="h-4 w-4" /></button>}
+        {canMoveRight && <button onClick={onMoveRight} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-sm backdrop-blur transition hover:bg-gray-100 hover:text-gray-900" aria-label="Geser kanan"><ChevronRight className="h-4 w-4" /></button>}
         <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" aria-label="Edit paket"><Edit2 className="h-4 w-4" /></button>
         <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus paket"><Trash className="h-4 w-4" /></button>
       </div>
