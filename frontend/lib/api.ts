@@ -122,3 +122,28 @@ export async function uploadPortfolioImage(file: File, token: string): Promise<{
 export function formatRupiah(value: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 }
+
+export interface PathCount {
+  path: string;
+  count: number;
+}
+
+export interface AnalyticsSummary {
+  total_views: number;
+  unique_visits: number;
+  views_by_path: PathCount[];
+  recent_history: any[]; // Adjust type if needed
+}
+
+export async function trackEvent(sessionId: string, path: string, action = 'page_view') {
+  return apiRequest('/analytics/track', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId, path, action }),
+  });
+}
+
+export async function getAnalyticsSummary(token: string): Promise<AnalyticsSummary> {
+  return apiRequest<AnalyticsSummary>('/studio/analytics', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+}

@@ -63,6 +63,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { AnalyticsTracker } from '@/components/AnalyticsTracker';
+
 export default function RootLayout({
   children,
 }: {
@@ -70,7 +72,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" data-theme="light">
-      <body>{children}</body>
+      <body>
+        <AnalyticsTracker />
+        {children}
+      </body>
     </html>
   );
 }

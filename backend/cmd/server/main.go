@@ -190,7 +190,7 @@ func main() {
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping MySQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}, &models.VisitorLog{}); err != nil {
 		log.Fatalf("Failed to run database migration: %v", err)
 	}
 	if err := migrateLegacyPaymentProofs(db, cfg); err != nil {
@@ -262,6 +262,7 @@ func main() {
 	api.Post("/bookings/:code/payment-proof", h.UploadPaymentProof)
 	api.Get("/galleries/:slug", h.GetGalleryBySlug)
 	api.Post("/galleries/:slug/select", h.SubmitSelection)
+	api.Post("/analytics/track", h.TrackEvent)
 
 	studio := api.Group("/studio", h.AdminRequired)
 	studio.Get("/bookings", h.ListBookings)
@@ -274,6 +275,7 @@ func main() {
 	studio.Post("/galleries", h.CreateGallery)
 	studio.Delete("/galleries/:id", h.DeleteGallery)
 	studio.Get("/galleries/:slug/export", h.ExportSelection)
+	studio.Get("/analytics", h.GetAnalyticsSummary)
 
 	studio.Get("/packages", h.ListAllPackages)
 	studio.Post("/packages", h.CreatePackage)

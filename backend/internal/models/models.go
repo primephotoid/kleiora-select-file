@@ -154,3 +154,11 @@ type CreateBookingRequest struct {
 	CustomDPAmount  int64  `json:"custom_dp_amount"`
 	Notes           string `json:"notes"`
 }
+
+type VisitorLog struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	SessionID string    `gorm:"size:128;index" json:"session_id"`
+	Path      string    `gorm:"size:255;index" json:"path"`
+	Action    string    `gorm:"size:64;default:'page_view'" json:"action"`
+	CreatedAt time.Time `json:"created_at"`
+}

@@ -9,7 +9,7 @@ import {
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
   ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud
 } from 'lucide-react';
-import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage } from '@/lib/api';
+import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
@@ -22,7 +22,7 @@ interface GalleryItem {
   selection?: { total_selected: number; selected_files?: string; client_notes?: string };
 }
 
-type DashboardTab = 'bookings' | 'galleries' | 'packages' | 'portfolios' | 'reviews';
+type DashboardTab = 'bookings' | 'galleries' | 'packages' | 'portfolios' | 'reviews' | 'analytics';
 type BookingFilter = 'all' | 'needs_action' | 'confirmed' | 'completed';
 type BookingSort = 'created_at' | 'session_date' | 'full_name' | 'code' | 'amount_due';
 interface BookingMeta { page: number; per_page: number; total: number; total_pages: number }
@@ -40,6 +40,7 @@ export default function DashboardPage() {
   const [packages, setPackages] = useState<PackageItem[]>([]);
   const [portfolios, setPortfolios] = useState<PortfolioItem[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processing, setProcessing] = useState('');
@@ -118,18 +119,20 @@ export default function DashboardPage() {
     background ? setRefreshing(true) : setLoading(true);
     setError('');
     try {
-      const [bookingData, galleryData, packageData, portfolioData, reviewData] = await Promise.all([
+      const [bookingData, galleryData, packageData, portfolioData, reviewData, analyticsData] = await Promise.all([
         apiRequest<{ bookings: BookingItem[]; meta: BookingMeta; summary: BookingSummary }>(`/studio/bookings?${bookingQuery()}`, { headers: authHeaders() }),
         apiRequest<{ galleries: GalleryItem[] }>('/studio/galleries', { headers: authHeaders() }),
         apiRequest<{ packages: PackageItem[] }>('/studio/packages', { headers: authHeaders() }),
         apiRequest<{ portfolios: PortfolioItem[] }>('/studio/portfolios', { headers: authHeaders() }),
         apiRequest<{ reviews: ReviewItem[] }>('/studio/reviews', { headers: authHeaders() }),
+        getAnalyticsSummary(localStorage.getItem('kleiora_token') || ''),
       ]);
       applyBookingData(bookingData);
       setGalleries(galleryData.galleries);
       setPackages(packageData.packages);
       setPortfolios(portfolioData.portfolios);
       setReviews(reviewData.reviews);
+      setAnalytics(analyticsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Data studio gagal dimuat.');
     } finally {
@@ -358,6 +361,7 @@ export default function DashboardPage() {
           <TabButton active={tab === 'packages'} onClick={() => setTab('packages')} icon={<PackageIcon />} label={`Paket (${packages.length})`} />
           <TabButton active={tab === 'portfolios'} onClick={() => setTab('portfolios')} icon={<Images />} label={`Portofolio (${portfolios.length})`} />
           <TabButton active={tab === 'reviews'} onClick={() => setTab('reviews')} icon={<MessageCircle />} label={`Ulasan (${reviews.length})`} />
+          <TabButton active={tab === 'analytics'} onClick={() => setTab('analytics')} icon={<Check />} label="Analitik" />
         </div>
 
         {loading ? <DashboardSkeleton /> : tab === 'bookings' ? (
@@ -415,6 +419,25 @@ export default function DashboardPage() {
               </div>
             ))}
             {!reviews.length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<MessageCircle />} title="Belum ada ulasan" text="Ulasan dari klien akan muncul di sini." /></div>}
+          </section>
+        ) : tab === 'analytics' ? (
+          <section className="mt-5 space-y-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Stat icon={<Check />} label="Total Pengunjung" value={analytics?.unique_visits || 0} />
+              <Stat icon={<Check />} label="Total Tayangan" value={analytics?.total_views || 0} />
+            </div>
+            <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
+              <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
+              <div className="space-y-3">
+                {analytics?.views_by_path?.map(p => (
+                  <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm">
+                    <span className="text-gray-600">{p.path}</span>
+                    <span className="font-semibold">{p.count}</span>
+                  </div>
+                ))}
+                {!analytics?.views_by_path?.length && <p className="text-sm text-gray-500">Belum ada data.</p>}
+              </div>
+            </div>
           </section>
         ) : null}
       </main>
