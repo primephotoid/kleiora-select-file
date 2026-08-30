@@ -13,6 +13,7 @@ import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, Packa
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
+import { VideoTrimmer } from '@/components/VideoTrimmer';
 import imageCompression from 'browser-image-compression';
 
 interface GalleryItem {
@@ -682,47 +683,48 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
   const [uploadError, setUploadError] = useState('');
   const [cropSrc, setCropSrc] = useState('');
   const [pendingFileName, setPendingFileName] = useState('');
+  const [trimSrc, setTrimSrc] = useState('');
+  const [trimFileName, setTrimFileName] = useState('');
 
   useEffect(() => {
     return () => {
       if (localPreview.startsWith('blob:')) URL.revokeObjectURL(localPreview);
       if (cropSrc.startsWith('blob:')) URL.revokeObjectURL(cropSrc);
+      if (trimSrc.startsWith('blob:')) URL.revokeObjectURL(trimSrc);
     };
-  }, [localPreview, cropSrc]);
+  }, [localPreview, cropSrc, trimSrc]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
     if (file.type.startsWith('video/')) {
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.onloadedmetadata = async () => {
-        URL.revokeObjectURL(video.src);
-        if (video.duration > 11) { // 10s max with a bit of buffer
-          setUploadError('Durasi video tidak boleh lebih dari 10 detik.');
-          return;
-        }
-        setUploadError('');
-        setUploading(true);
-        try {
-          const token = localStorage.getItem('kleiora_token') || '';
-          const res = await uploadPackageImage(file, token);
-          setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
-          setLocalPreview('');
-        } catch (err) {
-          setUploadError(err instanceof Error ? err.message : 'Gagal upload video');
-        } finally {
-          setUploading(false);
-        }
-      };
-      video.src = URL.createObjectURL(file);
+      // Open the VideoTrimmer instead of uploading directly
+      setTrimFileName(file.name);
+      setTrimSrc(URL.createObjectURL(file));
     } else {
       setPendingFileName(file.name);
       const objectUrl = URL.createObjectURL(file);
       setCropSrc(objectUrl);
     }
     e.target.value = '';
+  };
+
+  const handleTrimConfirm = async (clippedFile: File) => {
+    if (trimSrc.startsWith('blob:')) URL.revokeObjectURL(trimSrc);
+    setTrimSrc('');
+    setUploadError('');
+    setUploading(true);
+    try {
+      const token = localStorage.getItem('kleiora_token') || '';
+      const res = await uploadPackageImage(clippedFile, token);
+      setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
+      setLocalPreview('');
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Gagal upload video');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleCropConfirm = async (croppedFile: File) => {
@@ -753,6 +755,15 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
           fileName={pendingFileName}
           onCropConfirm={handleCropConfirm}
           onCancel={() => setCropSrc('')}
+        />
+      )}
+      {trimSrc && (
+        <VideoTrimmer
+          videoSrc={trimSrc}
+          fileName={trimFileName}
+          clipDuration={10}
+          onConfirm={handleTrimConfirm}
+          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); }}
         />
       )}
       <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
@@ -799,10 +810,10 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
                   <div className="flex-1">
                     <label className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
                       {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                      {uploading ? 'Mengupload...' : 'Pilih File (Foto / Video 10s)'}
-                      <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="hidden" onChange={handleImageChange} disabled={uploading || !!cropSrc} />
+                      {uploading ? 'Mengupload...' : 'Pilih File (Foto / Video Maks 60s)'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="hidden" onChange={handleImageChange} disabled={uploading || !!cropSrc || !!trimSrc} />
                     </label>
-                    <p className="mt-1 text-[10px] text-[var(--muted)]">Video maksimal 10 detik. Editor crop hanya muncul untuk foto.</p>
+                    <p className="mt-1 text-[10px] text-[var(--muted)]">Video maks 60s, pilih klip 10s via editor. Foto melalui editor crop.</p>
                   </div>
                 </div>
               </Field>
@@ -862,6 +873,8 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
   const [cropQueue, setCropQueue] = useState<{ src: string; name: string }[]>([]);
   // Use ref instead of state to avoid stale closure when accumulating paths
   const accumulatedPathsRef = useRef<string[]>([]);
+  const [trimSrc, setTrimSrc] = useState('');
+  const [trimFileName, setTrimFileName] = useState('');
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -875,50 +888,38 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    const imageQueue = [];
-    accumulatedPathsRef.current = [];
-    setUploading(true);
-    setUploadError('');
-
-    try {
-      for (const f of Array.from(files)) {
-        if (f.type.startsWith('video/')) {
-          const valid = await new Promise<boolean>((resolve) => {
-            const video = document.createElement('video');
-            video.preload = 'metadata';
-            video.onloadedmetadata = () => {
-              URL.revokeObjectURL(video.src);
-              resolve(video.duration <= 11);
-            };
-            video.onerror = () => resolve(false);
-            video.src = URL.createObjectURL(f);
-          });
-          
-          if (!valid) {
-            throw new Error(`Video ${f.name} melebihi durasi maksimal (10 detik).`);
-          }
-          
-          const token = localStorage.getItem('kleiora_token') || '';
-          const res = await uploadPortfolioImage(f, token);
-          accumulatedPathsRef.current.push(res.path);
-        } else {
-          imageQueue.push({ src: URL.createObjectURL(f), name: f.name });
-        }
-      }
-      
-      if (imageQueue.length > 0) {
-        setCropQueue(imageQueue);
-        setUploading(false);
-      } else {
-        setForm((prev: PortfolioItem) => ({ ...prev, image_path: accumulatedPathsRef.current.join(',') }));
-        setUploading(false);
-      }
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Gagal memproses file.');
-      setUploading(false);
+    // For videos, open the VideoTrimmer (only single file allowed for video)
+    const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+    if (videoFiles.length > 0) {
+      // Take the first video only
+      const f = videoFiles[0];
+      setTrimFileName(f.name);
+      setTrimSrc(URL.createObjectURL(f));
+      e.target.value = '';
+      return;
     }
     
+    // For images: add to crop queue
+    const imageQueue = Array.from(files).map(f => ({ src: URL.createObjectURL(f), name: f.name }));
+    accumulatedPathsRef.current = [];
+    setCropQueue(imageQueue);
     e.target.value = '';
+  };
+
+  const handleTrimConfirm = async (clippedFile: File) => {
+    if (trimSrc.startsWith('blob:')) URL.revokeObjectURL(trimSrc);
+    setTrimSrc('');
+    setUploading(true);
+    setUploadError('');
+    try {
+      const token = localStorage.getItem('kleiora_token') || '';
+      const res = await uploadPortfolioImage(clippedFile, token);
+      setForm((prev: PortfolioItem) => ({ ...prev, image_path: res.path }));
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Gagal upload video.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleCropConfirm = async (croppedFile: File) => {
@@ -978,6 +979,15 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
           onCancel={handleCropCancel}
         />
       )}
+      {trimSrc && (
+        <VideoTrimmer
+          videoSrc={trimSrc}
+          fileName={trimFileName}
+          clipDuration={10}
+          onConfirm={handleTrimConfirm}
+          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); }}
+        />
+      )}
       <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
         <form onSubmit={onSubmit} className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-md sm:rounded-3xl sm:p-8">
           <div className="flex items-start justify-between">
@@ -1012,7 +1022,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
                       {uploading ? 'Mengupload...' : (form.id ? 'Pilih & Crop Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
                       <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading || cropQueue.length > 0} />
                     </label>
-                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Video maks 10s (tanpa crop). Foto akan dicrop. Maks 50MB.</p>
+                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Video maks 60s → pilih klip 10s via editor. Foto akan dicrop.</p>
                   </div>
                 </div>
               </Field>

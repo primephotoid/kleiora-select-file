@@ -205,10 +205,10 @@ func main() {
 	app := fiber.New(fiber.Config{
 		AppName:      "Kleiora API",
 		UnescapePath: true,
-		BodyLimit:    30 * 1024 * 1024,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		BodyLimit:    200 * 1024 * 1024,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if fiberErr, ok := err.(*fiber.Error); ok {

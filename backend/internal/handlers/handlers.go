@@ -956,8 +956,8 @@ func (h *Handler) UploadPackageImage(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusBadRequest, "File gambar tidak ditemukan")
 	}
 
-	if file.Size > 50*1024*1024 {
-		return apiError(c, fiber.StatusBadRequest, "Ukuran file terlalu besar (Maks 50MB)")
+	if file.Size > 200*1024*1024 {
+		return apiError(c, fiber.StatusBadRequest, "Ukuran file terlalu besar (Maks 200MB)")
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
@@ -1070,8 +1070,8 @@ func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Image required"})
 	}
 
-	if file.Size > 50*1024*1024 {
-		return c.Status(400).JSON(fiber.Map{"error": "Ukuran file terlalu besar (Maks 50MB)."})
+	if file.Size > 200*1024*1024 {
+		return c.Status(400).JSON(fiber.Map{"error": "Ukuran file terlalu besar (Maks 200MB)."})
 	}
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
@@ -1084,7 +1084,6 @@ func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create upload directory"})
 	}
 
-	ext := filepath.Ext(file.Filename)
 	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	path := filepath.Join(dir, filename)
 
