@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
   Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
-  Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
   ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary, reorderPackages } from '@/lib/api';
@@ -31,7 +30,7 @@ interface BookingSummary { total: number; needs_action: number; confirmed: numbe
 interface ConfirmationRequest { title: string; description: string; confirmLabel?: string; resolve: (confirmed: boolean) => void }
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
-const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true };
+const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true, sort_order: 0 };
 const emptyPortfolioForm = { id: 0, title: '', image_path: '', is_active: true, sort_order: 0 };
 
 export default function DashboardPage() {
