@@ -426,7 +426,7 @@ export default function DashboardPage() {
               <Stat icon={<UserRound />} label="Total Pengunjung" value={analytics?.unique_visits || 0} />
               <Stat icon={<Check />} label="Total Tayangan" value={analytics?.total_views || 0} />
               <Stat icon={<ReceiptText />} label="Klien (Booking)" value={stats.total} />
-              <Stat icon={<CheckCircle2 />} label="Konversi" value={analytics?.unique_visits ? Math.round((stats.total / (analytics.unique_visits || 1)) * 100) + '%' : '0%'} />
+              <Stat icon={<CheckCircle2 />} label="Konversi (%)" value={analytics?.unique_visits ? Math.round((stats.total / (analytics.unique_visits || 1)) * 100) : 0} />
             </div>
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
               <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
