@@ -659,8 +659,14 @@ function PackageCard({ pkg, onEdit, onDelete, canMoveLeft, canMoveRight, onMoveL
         <button onClick={onEdit} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[var(--gold-dark)] shadow-sm backdrop-blur transition hover:bg-white" aria-label="Edit paket"><Edit2 className="h-4 w-4" /></button>
         <button onClick={onDelete} className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus paket"><Trash className="h-4 w-4" /></button>
       </div>
-      <div className="flex h-32 items-center justify-center bg-[var(--surface2)] overflow-hidden">
-        {pkg.image_path ? <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="h-full w-full object-cover" /> : <PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" />}
+      <div className="relative h-32 overflow-hidden bg-[var(--surface2)]">
+        {pkg.image_path?.match(/\.(mp4|webm)$/i) ? (
+          <video src={getImageUrl(pkg.image_path)} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+        ) : pkg.image_path ? (
+          <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center"><PackageIcon className="h-8 w-8 text-[var(--gold-dark)]" /></div>
+        )}
       </div>
       <div className="flex flex-col p-5 flex-1">
         <div className="flex items-start justify-between gap-3">
