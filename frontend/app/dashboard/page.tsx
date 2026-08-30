@@ -685,6 +685,7 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
   const [pendingFileName, setPendingFileName] = useState('');
   const [trimSrc, setTrimSrc] = useState('');
   const [trimFileName, setTrimFileName] = useState('');
+  const [trimFile, setTrimFile] = useState<File | null>(null);
 
   useEffect(() => {
     return () => {
@@ -699,7 +700,8 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
     if (!file) return;
     
     if (file.type.startsWith('video/')) {
-      // Open the VideoTrimmer instead of uploading directly
+      // Open the VideoTrimmer preview instead of uploading directly
+      setTrimFile(file);
       setTrimFileName(file.name);
       setTrimSrc(URL.createObjectURL(file));
     } else {
@@ -757,13 +759,14 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
           onCancel={() => setCropSrc('')}
         />
       )}
-      {trimSrc && (
+      {trimSrc && trimFile && (
         <VideoTrimmer
           videoSrc={trimSrc}
           fileName={trimFileName}
-          clipDuration={10}
+          originalFile={trimFile}
+          maxDuration={60}
           onConfirm={handleTrimConfirm}
-          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); }}
+          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); setTrimFile(null); }}
         />
       )}
       <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>
@@ -875,6 +878,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
   const accumulatedPathsRef = useRef<string[]>([]);
   const [trimSrc, setTrimSrc] = useState('');
   const [trimFileName, setTrimFileName] = useState('');
+  const [trimFile, setTrimFile] = useState<File | null>(null);
 
   // Cleanup blob URLs on unmount
   useEffect(() => {
@@ -893,6 +897,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     if (videoFiles.length > 0) {
       // Take the first video only
       const f = videoFiles[0];
+      setTrimFile(f);
       setTrimFileName(f.name);
       setTrimSrc(URL.createObjectURL(f));
       e.target.value = '';
@@ -979,13 +984,14 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
           onCancel={handleCropCancel}
         />
       )}
-      {trimSrc && (
+      {trimSrc && trimFile && (
         <VideoTrimmer
           videoSrc={trimSrc}
           fileName={trimFileName}
-          clipDuration={10}
+          originalFile={trimFile}
+          maxDuration={60}
           onConfirm={handleTrimConfirm}
-          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); }}
+          onCancel={() => { URL.revokeObjectURL(trimSrc); setTrimSrc(''); setTrimFile(null); }}
         />
       )}
       <div className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={event => event.target === event.currentTarget && onClose()}>

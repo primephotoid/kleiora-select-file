@@ -1,133 +1,56 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Loader2, Play, Pause, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Play, Pause, X, Film } from 'lucide-react';
 
 interface VideoTrimmerProps {
-  videoSrc: string;       // blob URL of the original footage
+  videoSrc: string;      // blob URL of the video to preview
   fileName: string;
-  clipDuration?: number;  // how many seconds to clip (default 10)
-  onConfirm: (clippedFile: File) => void;
+  originalFile: File;    // original File to pass through on confirm
+  maxDuration?: number;  // max seconds allowed (default 60)
+  onConfirm: (file: File) => void;
   onCancel: () => void;
 }
 
-export function VideoTrimmer({ videoSrc, fileName, clipDuration = 10, onConfirm, onCancel }: VideoTrimmerProps) {
+export function VideoTrimmer({ videoSrc, fileName, originalFile, maxDuration = 60, onConfirm, onCancel }: VideoTrimmerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState(0);
-  const [startTime, setStartTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [recording, setRecording] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [error, setError] = useState('');
 
-  const maxStart = Math.max(0, duration - clipDuration);
-
-  // When metadata loads, set duration
   const handleLoaded = () => {
     if (!videoRef.current) return;
-    setDuration(videoRef.current.duration);
-    videoRef.current.currentTime = 0;
-  };
-
-  // Keep currentTime in sync
-  const handleTimeUpdate = () => {
-    if (!videoRef.current) return;
-    const ct = videoRef.current.currentTime;
-    setCurrentTime(ct);
-    // Auto-stop at end of clip window
-    if (ct >= startTime + clipDuration) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = startTime;
-      setIsPlaying(false);
+    const dur = videoRef.current.duration;
+    setDuration(dur);
+    if (dur > maxDuration + 1) {
+      setError(`Durasi video (${Math.round(dur)}s) melebihi batas ${maxDuration} detik. Harap potong videonya terlebih dahulu menggunakan aplikasi video editor, lalu upload kembali.`);
     }
   };
 
-  const togglePlay = useCallback(() => {
+  const handleTimeUpdate = () => {
+    if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+  };
+
+  const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (isPlaying) {
-      v.pause();
-      setIsPlaying(false);
-    } else {
-      v.currentTime = startTime;
-      v.play();
-      setIsPlaying(true);
-    }
-  }, [isPlaying, startTime]);
+    if (isPlaying) { v.pause(); setIsPlaying(false); }
+    else { v.play(); setIsPlaying(true); }
+  };
 
-  // When startTime changes, seek to it
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || isPlaying) return;
-    v.currentTime = startTime;
-    setCurrentTime(startTime);
-  }, [startTime, isPlaying]);
-
-  // Progress bar: percentage within the selected clip
-  const clipProgress = duration > 0
-    ? Math.min(100, Math.max(0, ((currentTime - startTime) / clipDuration) * 100))
-    : 0;
-
-  const handleConfirm = useCallback(async () => {
-    const v = videoRef.current;
     if (!v) return;
+    const onEnded = () => setIsPlaying(false);
+    v.addEventListener('ended', onEnded);
+    return () => v.removeEventListener('ended', onEnded);
+  }, []);
 
-    // Pause and seek to start
-    v.pause();
-    v.currentTime = startTime;
-    setIsPlaying(false);
-    setRecording(true);
-    setProgress(0);
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const tooLong = duration > maxDuration + 1;
 
-    // We'll capture using MediaRecorder on the video stream
-    let stream: MediaStream;
-    try {
-      // @ts-ignore – captureStream is supported in all modern browsers
-      stream = v.captureStream();
-    } catch {
-      alert('Browser Anda tidak mendukung fitur perekaman video. Coba gunakan Chrome atau Edge terbaru.');
-      setRecording(false);
-      return;
-    }
-
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : MediaRecorder.isTypeSupported('video/webm')
-        ? 'video/webm'
-        : 'video/mp4';
-
-    const recorder = new MediaRecorder(stream, { mimeType });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-
-    recorder.onstop = () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      const blob = new Blob(chunks, { type: mimeType });
-      const ext = mimeType.includes('mp4') ? '.mp4' : '.webm';
-      const baseName = fileName.replace(/\.[^.]+$/, '');
-      const file = new File([blob], `${baseName}_clip${ext}`, { type: mimeType });
-      setRecording(false);
-      onConfirm(file);
-    };
-
-    recorder.start();
-    v.play();
-
-    // Track progress
-    const startTs = Date.now();
-    intervalRef.current = setInterval(() => {
-      const elapsed = (Date.now() - startTs) / 1000;
-      setProgress(Math.min(100, (elapsed / clipDuration) * 100));
-    }, 100);
-
-    // Stop after clipDuration
-    setTimeout(() => {
-      recorder.stop();
-      v.pause();
-    }, clipDuration * 1000 + 200); // small buffer
-
-  }, [startTime, clipDuration, fileName, onConfirm]);
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end justify-center overflow-hidden bg-black/80 p-0 backdrop-blur-sm sm:items-center sm:p-4">
@@ -135,14 +58,22 @@ export function VideoTrimmer({ videoSrc, fileName, clipDuration = 10, onConfirm,
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Editor Klip Video</p>
-            <h2 className="mt-1 font-serif text-2xl">Pilih Bagian Video</h2>
-            <p className="mt-1 text-xs text-gray-500">Geser slider untuk memilih {clipDuration} detik yang ingin ditampilkan kepada klien.</p>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Preview Video</p>
+            <h2 className="mt-1 font-serif text-2xl">Konfirmasi Video</h2>
+            <p className="mt-1 text-xs text-gray-500">Pastikan video yang Anda pilih sudah sesuai sebelum mengupload.</p>
           </div>
-          <button onClick={onCancel} disabled={recording} className="rounded-full border border-gray-200 p-2 hover:bg-gray-50">
+          <button onClick={onCancel} className="rounded-full border border-gray-200 p-2 hover:bg-gray-50">
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Error Banner */}
+        {error && (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700">
+            <strong className="block mb-1">⚠ Video Terlalu Panjang</strong>
+            {error}
+          </div>
+        )}
 
         {/* Video Preview */}
         <div className="relative mt-5 overflow-hidden rounded-2xl bg-black">
@@ -156,84 +87,65 @@ export function VideoTrimmer({ videoSrc, fileName, clipDuration = 10, onConfirm,
             preload="metadata"
             playsInline
           />
-          {/* Clip progress bar overlay */}
-          {isPlaying && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-              <div className="h-full bg-[var(--gold)] transition-all" style={{ width: `${clipProgress}%` }} />
-            </div>
-          )}
         </div>
 
-        {/* Play button and time info */}
+        {/* Controls */}
         <div className="mt-3 flex items-center gap-3">
           <button
             onClick={togglePlay}
-            disabled={recording || duration === 0}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--gold)] text-white shadow transition hover:opacity-90 disabled:opacity-50"
+            disabled={duration === 0}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--gold)] text-white shadow transition hover:opacity-90 disabled:opacity-40"
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </button>
           <div className="flex-1">
-            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-              <span>Mulai: <strong>{startTime.toFixed(1)}s</strong></span>
-              <span>Akhir: <strong>{Math.min(duration, startTime + clipDuration).toFixed(1)}s</strong></span>
-              <span>Total footage: <strong>{duration.toFixed(1)}s</strong></span>
+            <div className="mb-1 flex justify-between text-[10px] text-gray-500">
+              <span>{formatTime(currentTime)}</span>
+              <span className={duration > maxDuration + 1 ? 'font-bold text-red-600' : ''}>
+                {duration > 0 ? `${formatTime(duration)} total` : '—'}
+              </span>
             </div>
-            {/* Timeline range slider */}
-            <input
-              type="range"
-              min={0}
-              max={maxStart}
-              step={0.1}
-              value={startTime}
-              onChange={(e) => { setStartTime(Number(e.target.value)); setIsPlaying(false); }}
-              disabled={recording || duration === 0}
-              className="w-full accent-[var(--gold)]"
-            />
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+              <div className="h-full rounded-full bg-[var(--gold)] transition-all duration-150" style={{ width: `${progress}%` }} />
+            </div>
           </div>
         </div>
 
-        {/* Clip selection visual indicator */}
-        {duration > 0 && (
-          <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-gray-100">
-            <div
-              className="h-full rounded-full bg-[var(--gold)]/30 border-2 border-[var(--gold)] transition-all"
-              style={{
-                marginLeft: `${(startTime / duration) * 100}%`,
-                width: `${(Math.min(clipDuration, duration - startTime) / duration) * 100}%`,
-              }}
-            />
+        {/* File Info */}
+        <div className="mt-4 flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3">
+          <Film className="h-5 w-5 shrink-0 text-gray-400" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-bold text-gray-700">{fileName}</p>
+            <p className="text-[10px] text-gray-400">
+              {(originalFile.size / (1024 * 1024)).toFixed(1)} MB
+              {duration > 0 && ` · ${Math.round(duration)} detik`}
+            </p>
           </div>
-        )}
+          {!tooLong && duration > 0 && (
+            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">✓ Valid</span>
+          )}
+          {tooLong && (
+            <span className="rounded-full bg-red-100 px-2 py-1 text-[10px] font-bold text-red-700">Terlalu panjang</span>
+          )}
+        </div>
 
-        {/* Recording progress */}
-        {recording && (
-          <div className="mt-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-[var(--gold-dark)]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Merekam klip... {Math.round(progress)}%
-            </div>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-              <div className="h-full rounded-full bg-[var(--gold)] transition-all duration-100" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        )}
+        {/* Tip */}
+        <p className="mt-3 text-center text-[10px] text-gray-400">
+          💡 Potong video menggunakan CapCut, iMovie, atau Premiere Pro sebelum upload untuk hasil terbaik.
+        </p>
 
         {/* Actions */}
         <div className="mt-5 flex gap-3">
-          <button onClick={onCancel} disabled={recording} className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold hover:bg-gray-50 disabled:opacity-50">
+          <button onClick={onCancel} className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm font-bold hover:bg-gray-50">
             Batal
           </button>
           <button
-            onClick={handleConfirm}
-            disabled={recording || duration === 0}
-            className="flex flex-[2] items-center justify-center gap-2 rounded-2xl bg-[var(--gold)] px-4 py-3 text-sm font-bold text-white shadow transition hover:opacity-90 disabled:opacity-50"
+            onClick={() => onConfirm(originalFile)}
+            disabled={tooLong || duration === 0}
+            className="flex flex-[2] items-center justify-center gap-2 rounded-2xl bg-[var(--gold)] px-4 py-3 text-sm font-bold text-white shadow transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {recording ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Merekam...</>
-            ) : (
-              <><Check className="h-4 w-4" /> Gunakan Klip {clipDuration}s Ini</>
-            )}
+            <Check className="h-4 w-4" />
+            {tooLong ? 'Video Terlalu Panjang' : 'Upload Video Ini'}
           </button>
         </div>
       </div>
