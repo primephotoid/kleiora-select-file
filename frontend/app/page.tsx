@@ -146,7 +146,11 @@ export default async function HomePage() {
               <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {portfolios.map(port => (
                   <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group">
-                    <img src={getImageUrl(port.image_path)} alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
+                    {port.image_path?.match(/\.(mp4|webm)$/i) ? (
+                      <video src={getImageUrl(port.image_path)} autoPlay loop muted playsInline className="absolute h-full w-full object-cover" />
+                    ) : (
+                      <img src={getImageUrl(port.image_path)} alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
+                    )}
                     <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   </div>
                 ))}

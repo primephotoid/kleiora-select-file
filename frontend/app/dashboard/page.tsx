@@ -693,9 +693,35 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPendingFileName(file.name);
-    const objectUrl = URL.createObjectURL(file);
-    setCropSrc(objectUrl);
+    
+    if (file.type.startsWith('video/')) {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = async () => {
+        URL.revokeObjectURL(video.src);
+        if (video.duration > 11) { // 10s max with a bit of buffer
+          setUploadError('Durasi video tidak boleh lebih dari 10 detik.');
+          return;
+        }
+        setUploadError('');
+        setUploading(true);
+        try {
+          const token = localStorage.getItem('kleiora_token') || '';
+          const res = await uploadPackageImage(file, token);
+          setForm((current: PackageItem) => ({ ...current, image_path: res.path }));
+          setLocalPreview('');
+        } catch (err) {
+          setUploadError(err instanceof Error ? err.message : 'Gagal upload video');
+        } finally {
+          setUploading(false);
+        }
+      };
+      video.src = URL.createObjectURL(file);
+    } else {
+      setPendingFileName(file.name);
+      const objectUrl = URL.createObjectURL(file);
+      setCropSrc(objectUrl);
+    }
     e.target.value = '';
   };
 
@@ -762,17 +788,21 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
               <Field label="Foto Paket (Rasio 3:2, Landscape)">
                 <div className="flex items-center gap-4 mt-2">
                   {form.image_path || localPreview ? (
-                    <img src={localPreview || getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                    form.image_path?.match(/\.(mp4|webm)$/i) ? (
+                      <video src={getImageUrl(form.image_path)} autoPlay loop muted playsInline className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                    ) : (
+                      <img src={localPreview || getImageUrl(form.image_path)} alt="Preview" className="h-16 w-24 object-cover rounded-lg border border-[var(--line)]" />
+                    )
                   ) : (
                     <div className="h-16 w-24 flex items-center justify-center bg-white rounded-lg border border-dashed border-[var(--line)]"><ImageIcon className="h-6 w-6 text-slate-300"/></div>
                   )}
                   <div className="flex-1">
                     <label className="btn-secondary inline-flex items-center gap-2 px-4 py-2 text-xs cursor-pointer">
                       {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-                      {uploading ? 'Mengupload...' : 'Pilih & Crop Gambar'}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleImageChange} disabled={uploading || !!cropSrc} />
+                      {uploading ? 'Mengupload...' : 'Pilih File (Foto / Video 10s)'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" className="hidden" onChange={handleImageChange} disabled={uploading || !!cropSrc} />
                     </label>
-                    <p className="mt-1 text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih gambar.</p>
+                    <p className="mt-1 text-[10px] text-[var(--muted)]">Video maksimal 10 detik. Editor crop hanya muncul untuk foto.</p>
                   </div>
                 </div>
               </Field>
@@ -806,7 +836,11 @@ function PortfolioCard({ portfolio, onEdit, onDelete }: { portfolio: PortfolioIt
       </div>
       <div className="aspect-[3/4] w-full bg-[var(--surface2)]">
         {portfolio.image_path ? (
-          <img src={getImageUrl(portfolio.image_path)} alt={portfolio.title || 'Portfolio'} className="h-full w-full object-cover" loading="lazy" />
+          portfolio.image_path.match(/\.(mp4|webm)$/i) ? (
+            <video src={getImageUrl(portfolio.image_path)} autoPlay loop muted playsInline className="h-full w-full object-cover" />
+          ) : (
+            <img src={getImageUrl(portfolio.image_path)} alt={portfolio.title || 'Portfolio'} className="h-full w-full object-cover" loading="lazy" />
+          )
         ) : (
           <div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-8 w-8 text-slate-300" /></div>
         )}
@@ -837,12 +871,53 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const queue = Array.from(files).map(f => ({ src: URL.createObjectURL(f), name: f.name }));
+    
+    const imageQueue = [];
     accumulatedPathsRef.current = [];
-    setCropQueue(queue);
+    setUploading(true);
+    setUploadError('');
+
+    try {
+      for (const f of Array.from(files)) {
+        if (f.type.startsWith('video/')) {
+          const valid = await new Promise<boolean>((resolve) => {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = () => {
+              URL.revokeObjectURL(video.src);
+              resolve(video.duration <= 11);
+            };
+            video.onerror = () => resolve(false);
+            video.src = URL.createObjectURL(f);
+          });
+          
+          if (!valid) {
+            throw new Error(`Video ${f.name} melebihi durasi maksimal (10 detik).`);
+          }
+          
+          const token = localStorage.getItem('kleiora_token') || '';
+          const res = await uploadPortfolioImage(f, token);
+          accumulatedPathsRef.current.push(res.path);
+        } else {
+          imageQueue.push({ src: URL.createObjectURL(f), name: f.name });
+        }
+      }
+      
+      if (imageQueue.length > 0) {
+        setCropQueue(imageQueue);
+        setUploading(false);
+      } else {
+        setForm((prev: PortfolioItem) => ({ ...prev, image_path: accumulatedPathsRef.current.join(',') }));
+        setUploading(false);
+      }
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Gagal memproses file.');
+      setUploading(false);
+    }
+    
     e.target.value = '';
   };
 
@@ -908,7 +983,7 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Manajemen Portofolio</p>
-              <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Foto' : 'Upload Foto Baru'}</h2>
+              <h2 className="mt-1 font-serif text-3xl">{form.id ? 'Edit Media' : 'Upload Media Baru'}</h2>
             </div>
             <button type="button" onClick={onClose} disabled={creating || uploading} className="rounded-full border border-[var(--line)] p-2"><X className="h-4 w-4" /></button>
           </div>
@@ -916,12 +991,16 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
           
           <div className="mt-7 space-y-4">
             <div className="p-4 border border-[var(--line)] rounded-xl bg-[var(--surface2)]">
-              <Field label="Foto Portofolio (Rasio 3:4, Portrait)">
+              <Field label="Foto / Video Portofolio (Foto: Rasio 3:4 · Video: maks 10s)">
                 <div className="mt-2 flex flex-col items-center gap-4">
                   {imagePaths.length > 0 ? (
                     <div className="flex flex-wrap justify-center gap-2">
                       {imagePaths.map((p, i) => (
-                        <img key={i} src={getImageUrl(p)} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                        p.match(/\.(mp4|webm)$/i) ? (
+                          <video key={i} src={getImageUrl(p)} autoPlay loop muted playsInline className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                        ) : (
+                          <img key={i} src={getImageUrl(p)} alt="Preview" className="h-40 w-32 object-cover rounded-lg border border-[var(--line)] shadow-sm" />
+                        )
                       ))}
                     </div>
                   ) : (
@@ -931,9 +1010,9 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
                     <label className="btn-secondary flex w-full items-center justify-center gap-2 px-4 py-2.5 text-xs cursor-pointer">
                       {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
                       {uploading ? 'Mengupload...' : (form.id ? 'Pilih & Crop Gambar' : 'Pilih Gambar (Bisa Banyak sekaligus)')}
-                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading || cropQueue.length > 0} />
+                      <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple={!form.id} className="hidden" onChange={handleImageChange} disabled={uploading || cropQueue.length > 0} />
                     </label>
-                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Akan muncul editor crop setelah memilih. Format JPG, PNG, WEBP. Maks 25MB.</p>
+                    <p className="mt-2 text-center text-[10px] text-[var(--muted)]">Video maks 10s (tanpa crop). Foto akan dicrop. Maks 50MB.</p>
                   </div>
                 </div>
               </Field>

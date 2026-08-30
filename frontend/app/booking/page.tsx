@@ -288,7 +288,11 @@ function BookingFlow() {
                 {packages.map(pkg => (
                   <div key={pkg.code} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--surface)] text-left transition hover:-translate-y-1">
                     <div className="relative aspect-[16/9]">
-                      <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
+                      {pkg.image_path?.match(/\.(mp4|webm)$/i) ? (
+                        <video src={getImageUrl(pkg.image_path)} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
+                      ) : (
+                        <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
+                      )}
                     </div>
                     <div className="p-6">
                       <h2 className="font-serif text-2xl font-semibold">{pkg.name}</h2>
@@ -332,7 +336,13 @@ function BookingFlow() {
                 </div>
               </div>
               <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
-                <div className="relative aspect-[4/3] overflow-hidden rounded-xl"><img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" /></div>
+                <div className="relative aspect-[4/3] overflow-hidden rounded-xl">
+                  {selectedPackage.image_path?.match(/\.(mp4|webm)$/i) ? (
+                    <video src={getImageUrl(selectedPackage.image_path)} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+                  ) : (
+                    <img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" />
+                  )}
+                </div>
                 <h2 className="mt-5 font-serif text-2xl font-semibold">{selectedPackage.name}</h2>
                 <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(selectedPackage.price)}</p>
                 <p className="mt-4 text-xs leading-5 text-[var(--muted)]">Kuota pilihan setelah sesi: {selectedPackage.edited_photos} foto.</p>
@@ -389,7 +399,11 @@ function BookingFlow() {
                 <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-[var(--muted)]">Rangkuman Pesanan</h3>
                 <div className="flex items-center gap-3">
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-[var(--surface2)]">
-                    <img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" />
+                    {selectedPackage.image_path?.match(/\.(mp4|webm)$/i) ? (
+                      <video src={getImageUrl(selectedPackage.image_path)} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+                    ) : (
+                      <img src={getImageUrl(selectedPackage.image_path)} alt={selectedPackage.name} className="absolute inset-0 h-full w-full object-cover" />
+                    )}
                   </div>
                   <div>
                     <p className="font-bold">{selectedPackage.name}</p>

@@ -956,9 +956,13 @@ func (h *Handler) UploadPackageImage(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusBadRequest, "File gambar tidak ditemukan")
 	}
 
+	if file.Size > 50*1024*1024 {
+		return apiError(c, fiber.StatusBadRequest, "Ukuran file terlalu besar (Maks 50MB)")
+	}
+
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
-		return apiError(c, fiber.StatusBadRequest, "Format file tidak didukung. Gunakan JPG, PNG, atau WEBP")
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" && ext != ".mp4" && ext != ".webm" {
+		return apiError(c, fiber.StatusBadRequest, "Format file tidak didukung. Gunakan JPG, PNG, WEBP, MP4, atau WEBM")
 	}
 
 	// Buat folder uploads jika belum ada
@@ -1066,8 +1070,13 @@ func (h *Handler) UploadPortfolioImage(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Image required"})
 	}
 
-	if file.Size > 25*1024*1024 {
-		return c.Status(400).JSON(fiber.Map{"error": "Ukuran gambar terlalu besar (Maks 25MB)."})
+	if file.Size > 50*1024*1024 {
+		return c.Status(400).JSON(fiber.Map{"error": "Ukuran file terlalu besar (Maks 50MB)."})
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" && ext != ".mp4" && ext != ".webm" {
+		return c.Status(400).JSON(fiber.Map{"error": "Format file tidak didukung. Gunakan JPG, PNG, WEBP, MP4, atau WEBM"})
 	}
 
 	dir := "./uploads/portfolios"
