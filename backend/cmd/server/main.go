@@ -154,9 +154,7 @@ func seedPackages(db *gorm.DB) error {
 		var existing models.Package
 		result := db.Where("code = ?", pkg.Code).First(&existing)
 		if result.Error == nil {
-			if err := db.Model(&existing).Updates(pkg).Error; err != nil {
-				return err
-			}
+			// Do not overwrite existing packages so admin edits are not lost on restart
 			continue
 		}
 		if result.Error != gorm.ErrRecordNotFound {

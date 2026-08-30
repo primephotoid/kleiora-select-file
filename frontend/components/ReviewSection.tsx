@@ -118,7 +118,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
               <h3 className="font-serif text-2xl">{success ? 'Ulasan Terkirim' : 'Bagikan Pengalamanmu'}</h3>
               <button onClick={closeReviewForm} disabled={submitting} className="rounded-full bg-gray-100 p-2 hover:bg-gray-200 disabled:opacity-50" aria-label="Tutup"><X className="h-4 w-4" /></button>
             </div>
-            
+
             {success ? (
               <div className="py-8 text-center">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-4"><Check className="h-8 w-8" /></div>
