@@ -13,6 +13,7 @@ import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, Packa
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
+import imageCompression from 'browser-image-compression';
 
 interface GalleryItem {
   id: number; slug: string; title: string; client_name: string; max_selection: number;
@@ -791,8 +792,14 @@ function CreatePortfolioModal({ form, setForm, creating, onClose, onSubmit }: { 
     setUploading(true);
     setUploadError('');
     try {
+      const options = {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        useWebWorker: true,
+      };
+      const compressedFile = await imageCompression(croppedFile, options);
       const token = localStorage.getItem('kleiora_token') || '';
-      const res = await uploadPortfolioImage(croppedFile, token);
+      const res = await uploadPortfolioImage(compressedFile, token);
       // Push to ref — always fresh, no stale closure
       accumulatedPathsRef.current = [...accumulatedPathsRef.current, res.path];
       // If no more in queue, commit all paths to form
