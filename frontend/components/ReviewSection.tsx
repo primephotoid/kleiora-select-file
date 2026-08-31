@@ -70,6 +70,11 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
     setForm({ client_name: '', rating: 5, comment: '' });
   }
 
+  const totalReviews = reviews.length;
+  const averageRating = totalReviews > 0 
+    ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / totalReviews).toFixed(1)
+    : 0;
+
   return (
     <section id="reviews" className="bg-[var(--surface)] py-24">
       <div className="mx-auto max-w-6xl px-6">
@@ -77,6 +82,15 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
           <div>
             <p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Testimoni</p>
             <h2 className="mt-3 font-serif text-4xl font-medium">Apa kata mereka?</h2>
+            {totalReviews > 0 && (
+              <div className="mt-4 flex items-center gap-2">
+                <div className="flex text-[var(--gold)]">
+                  <Star className="h-5 w-5 fill-current" />
+                </div>
+                <span className="font-bold text-lg">{averageRating}</span>
+                <span className="text-sm text-gray-500">dari {totalReviews} ulasan</span>
+              </div>
+            )}
           </div>
           <button onClick={() => { setSuccess(false); setError(''); setShowForm(true); }} className="btn-secondary px-6 py-3 text-sm">Tulis Ulasan</button>
         </div>
