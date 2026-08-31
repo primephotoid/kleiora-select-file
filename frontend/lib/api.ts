@@ -100,9 +100,11 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   return payload as T;
 }
 
-export async function uploadPackageImage(file: File, token: string): Promise<{ message: string; path: string }> {
+export async function uploadPackageImage(file: File | Blob, token: string): Promise<{ message: string; path: string }> {
   const formData = new FormData();
-  formData.append('image', file);
+  let filename = (file as File).name || 'image.jpg';
+  if (!/\.(jpg|jpeg|png|webp|mp4|webm)$/i.test(filename)) filename += '.jpg';
+  formData.append('image', file, filename);
   return apiRequest<{ message: string; path: string }>('/studio/packages/upload-image', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -118,9 +120,11 @@ export async function reorderPackages(items: { id: number; sort_order: number }[
   });
 }
 
-export async function uploadPortfolioImage(file: File, token: string): Promise<{ message: string; path: string }> {
+export async function uploadPortfolioImage(file: File | Blob, token: string): Promise<{ message: string; path: string }> {
   const formData = new FormData();
-  formData.append('image', file);
+  let filename = (file as File).name || 'image.jpg';
+  if (!/\.(jpg|jpeg|png|webp|mp4|webm)$/i.test(filename)) filename += '.jpg';
+  formData.append('image', file, filename);
   return apiRequest<{ message: string; path: string }>('/studio/portfolios/upload-image', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
