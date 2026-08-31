@@ -145,43 +145,36 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 func buildGallerySelectionMessages(gallery models.Gallery, selection models.Selection, files []string, whatsapp string) []string {
 	notes := selection.ClientNotes
 	if strings.TrimSpace(notes) == "" {
-		notes = "-"
+		notes = ""
 	}
+	
 	summary := fmt.Sprintf(
-		"● <b>Pilihan Foto Baru Diterima!</b>\n\n"+
-			"<b>Klien:</b> %s\n"+
-			"<b>WhatsApp:</b> %s\n"+
-			"<b>Galeri:</b> %s\n"+
-			"<b>Total Dipilih:</b> %d foto\n"+
-			"<b>Catatan Klien:</b> %s\n"+
-			"<b>Folder Drive:</b> <a href=\"https://drive.google.com/drive/folders/%s\">Buka folder</a>",
+		"● Pilihan Foto Baru Diterima!\n\n"+
+			"Klien: %s\n"+
+			"WhatsApp: %s\n"+
+			"Galeri: %s\n"+
+			"Total Dipilih: %d foto\n"+
+			"Catatan Klien: %s\n\n"+
+			"Daftar File:\n",
 		html.EscapeString(gallery.ClientName), html.EscapeString(whatsapp), html.EscapeString(gallery.Title),
-		selection.TotalSelected, html.EscapeString(notes), url.QueryEscape(gallery.DriveFolderID),
+		selection.TotalSelected, html.EscapeString(notes),
 	)
 
-	fileIDs := make(map[string]string, len(gallery.Photos))
-	for _, photo := range gallery.Photos {
-		fileIDs[photo.FileName] = photo.DriveFileID
-	}
-
 	const telegramSafeLimit = 3800
-	const listHeader = "● <b>Download Foto Pilihan</b>\n\n"
-	messages := []string{summary}
-	current := listHeader
-	for index, fileName := range SortFileNamesNatural(files) {
+	messages := []string{}
+	current := summary
+	
+	for _, fileName := range SortFileNamesNatural(files) {
 		label := html.EscapeString(fileName)
-		line := fmt.Sprintf("%d. %s\n", index+1, label)
-		if fileID := fileIDs[fileName]; fileID != "" {
-			downloadURL := "https://drive.google.com/uc?export=download&amp;id=" + url.QueryEscape(fileID)
-			line = fmt.Sprintf("%d. <a href=\"%s\">%s</a>\n", index+1, downloadURL, label)
-		}
-		if len(current)+len(line) > telegramSafeLimit && current != listHeader {
+		line := fmt.Sprintf("- %s\n", label)
+		if len(current)+len(line) > telegramSafeLimit {
 			messages = append(messages, current)
-			current = listHeader
+			current = ""
 		}
 		current += line
 	}
-	if current != listHeader {
+	
+	if current != "" {
 		messages = append(messages, current)
 	}
 	return messages
