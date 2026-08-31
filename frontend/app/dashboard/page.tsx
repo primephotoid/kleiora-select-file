@@ -469,13 +469,15 @@ export default function DashboardPage() {
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
               <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
               <div className="space-y-3">
-                {analytics?.views_by_path?.map(p => (
+                {analytics?.views_by_path
+                  ?.filter(p => !p.path.startsWith('/g/') && !p.path.startsWith('/dashboard') && !p.path.startsWith('/studio'))
+                  .map(p => (
                   <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm">
                     <span className="text-gray-600">{p.path === '/' ? 'home' : p.path}</span>
                     <span className="font-semibold">{p.count}</span>
                   </div>
                 ))}
-                {!analytics?.views_by_path?.length && <p className="text-sm text-gray-500">Belum ada data.</p>}
+                {!analytics?.views_by_path?.filter(p => !p.path.startsWith('/g/') && !p.path.startsWith('/dashboard') && !p.path.startsWith('/studio')).length && <p className="text-sm text-gray-500">Belum ada data.</p>}
               </div>
             </div>
           </section>
