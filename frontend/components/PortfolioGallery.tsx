@@ -28,6 +28,48 @@ async function fetchPortfolios(page: number): Promise<PortfolioPageResponse> {
   return res.json();
 }
 
+/** Skeleton card — shimmer placeholder matching the real card's aspect ratio */
+function SkeletonCard() {
+  return (
+    <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[#e8e4dc]">
+      <div className="skeleton-shimmer absolute inset-0" />
+    </div>
+  );
+}
+
+/** Single portfolio card */
+function PortfolioCard({ port }: { port: PortfolioItem }) {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[#e8e4dc] shadow-sm group">
+      {/* Skeleton behind the image until it loads */}
+      {!loaded && <div className="skeleton-shimmer absolute inset-0" />}
+
+      {port.image_path?.match(/\.(mp4|webm)$/i) ? (
+        <video
+          src={getImageUrl(port.image_path)}
+          autoPlay
+          loop
+          muted
+          playsInline
+          onLoadedData={() => setLoaded(true)}
+          className={`absolute h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        />
+      ) : (
+        <img
+          src={getImageUrl(port.image_path)}
+          alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`}
+          onLoad={() => setLoaded(true)}
+          className={`absolute h-full w-full object-cover transition-opacity duration-500 ${loaded ? 'opacity-100' : 'opacity-0'} group-hover:scale-105 transition-transform`}
+          loading="lazy"
+        />
+      )}
+      <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+    </div>
+  );
+}
+
 interface Props {
   initialPortfolios: PortfolioItem[];
   initialHasMore: boolean;
@@ -62,62 +104,54 @@ export function PortfolioGallery({ initialPortfolios, initialHasMore }: Props) {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
-
     const observer = new IntersectionObserver(
-      entries => {
-        if (entries[0].isIntersecting) loadMore();
-      },
-      { rootMargin: '200px' }
+      entries => { if (entries[0].isIntersecting) loadMore(); },
+      { rootMargin: '300px' }
     );
-
     observer.observe(el);
     return () => observer.disconnect();
   }, [loadMore]);
 
   return (
-    <div>
+    <>
+      {/* Shimmer keyframe — injected once */}
+      <style>{`
+        @keyframes portfolio-shimmer {
+          0%   { background-position: -800px 0; }
+          100% { background-position:  800px 0; }
+        }
+        .skeleton-shimmer {
+          background: linear-gradient(
+            90deg,
+            #e8e4dc 25%,
+            #f0ece4 50%,
+            #e8e4dc 75%
+          );
+          background-size: 800px 100%;
+          animation: portfolio-shimmer 1.4s ease-in-out infinite;
+        }
+      `}</style>
+
       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {/* Real cards */}
         {portfolios.map(port => (
-          <div
-            key={port.id}
-            className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group"
-          >
-            {port.image_path?.match(/\.(mp4|webm)$/i) ? (
-              <video
-                src={getImageUrl(port.image_path)}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="absolute h-full w-full object-cover"
-              />
-            ) : (
-              <img
-                src={getImageUrl(port.image_path)}
-                alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`}
-                className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105"
-                loading="lazy"
-              />
-            )}
-            <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-          </div>
+          <PortfolioCard key={port.id} port={port} />
+        ))}
+
+        {/* Skeleton cards appear inside the grid while loading */}
+        {loading && Array.from({ length: LIMIT }).map((_, i) => (
+          <SkeletonCard key={`skeleton-${i}`} />
         ))}
       </div>
 
-      {/* Sentinel element — observed to trigger next page load */}
-      <div ref={sentinelRef} aria-hidden="true" />
+      {/* Sentinel — triggers loadMore when scrolled into view */}
+      <div ref={sentinelRef} aria-hidden="true" className="h-1" />
 
-      {loading && (
-        <div className="mt-8 flex justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--gold)] border-t-transparent" />
-        </div>
-      )}
-
-      {!hasMore && portfolios.length > 0 && (
+      {!hasMore && portfolios.length > 0 && !loading && (
         <p className="mt-8 text-center text-xs font-bold uppercase tracking-[.2em] text-[var(--muted)]">
           Semua foto telah ditampilkan
         </p>
       )}
-    </div>
+    </>
   );
 }
