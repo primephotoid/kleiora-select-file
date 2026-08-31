@@ -1014,11 +1014,43 @@ func (h *Handler) ReorderPackages(c *fiber.Ctx) error {
 // --- PORTFOLIO MANAGEMENT ---
 
 func (h *Handler) ListActivePortfolios(c *fiber.Ctx) error {
+	page, err := strconv.Atoi(c.Query("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(c.Query("limit", "15")) // default 15 portfolios per page
+	if err != nil || limit < 1 {
+		limit = 15
+	}
+	if limit > 100 {
+		limit = 100 // max 100 per page
+	}
+
+	var total int64
+	if err := h.db.Model(&models.Portfolio{}).Where("is_active = ?", true).Count(&total).Error; err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to count portfolios"})
+	}
+
 	var portfolios []models.Portfolio
-	if err := h.db.Where("is_active = ?", true).Order("sort_order ASC, created_at DESC").Find(&portfolios).Error; err != nil {
+	if err := h.db.Where("is_active = ?", true).
+		Order("sort_order ASC, created_at DESC").
+		Offset((page - 1) * limit).
+		Limit(limit).
+		Find(&portfolios).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch portfolios"})
 	}
-	return c.JSON(fiber.Map{"portfolios": portfolios})
+
+	hasMore := int64(page*limit) < total
+
+	return c.JSON(fiber.Map{
+		"portfolios": portfolios,
+		"meta": fiber.Map{
+			"page":     page,
+			"limit":    limit,
+			"total":    total,
+			"has_more": hasMore,
+		},
+	})
 }
 
 func (h *Handler) ListAllPortfolios(c *fiber.Ctx) error {

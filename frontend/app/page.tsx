@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowRight, CalendarCheck, Check, Images, MessageCircle, ShieldCheck, Sparkles } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ReviewSection } from '@/components/ReviewSection';
+import { PortfolioGallery } from '@/components/PortfolioGallery';
 import { API_BASE_URL, formatRupiah, getImageUrl, PortfolioItem, ReviewItem } from '@/lib/api';
 
 const structuredData = {
@@ -51,14 +52,22 @@ const structuredData = {
   ],
 };
 
-async function getPortfolios(): Promise<PortfolioItem[]> {
+interface PortfolioPageData {
+  portfolios: PortfolioItem[];
+  hasMore: boolean;
+}
+
+async function getPortfolios(): Promise<PortfolioPageData> {
   try {
-    const res = await fetch(`${API_BASE_URL}/portfolios`, { next: { revalidate: 60 } });
-    if (!res.ok) return [];
+    const res = await fetch(`${API_BASE_URL}/portfolios?page=1&limit=15`, { next: { revalidate: 60 } });
+    if (!res.ok) return { portfolios: [], hasMore: false };
     const data = await res.json();
-    return data.portfolios || [];
-  } catch (err) {
-    return [];
+    return {
+      portfolios: data.portfolios || [],
+      hasMore: data.meta?.has_more ?? false,
+    };
+  } catch {
+    return { portfolios: [], hasMore: false };
   }
 }
 
@@ -74,7 +83,7 @@ async function getReviews(): Promise<ReviewItem[]> {
 }
 
 export default async function HomePage() {
-  const portfolios = await getPortfolios();
+  const { portfolios, hasMore } = await getPortfolios();
   const reviews = await getReviews();
 
   return (
@@ -143,18 +152,7 @@ export default async function HomePage() {
                 </div>
                 <p className="max-w-sm text-sm leading-6 text-[var(--muted)]">Setiap sesi dirancang agar kamu tetap nyaman dan pulang dengan foto yang terasa personal.</p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {portfolios.map(port => (
-                  <div key={port.id} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-[var(--surface2)] shadow-sm group">
-                    {port.image_path?.match(/\.(mp4|webm)$/i) ? (
-                      <video src={getImageUrl(port.image_path)} autoPlay loop muted playsInline className="absolute h-full w-full object-cover" />
-                    ) : (
-                      <img src={getImageUrl(port.image_path)} alt={`Portfolio foto wisuda ${port.title || 'Kleiora Grads'}`} className="absolute h-full w-full object-cover transition-transform duration-500 hover:scale-105" loading="lazy" />
-                    )}
-                    <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  </div>
-                ))}
-              </div>
+              <PortfolioGallery initialPortfolios={portfolios} initialHasMore={hasMore} />
             </div>
           </section>
         )}
