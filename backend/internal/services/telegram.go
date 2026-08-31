@@ -7,7 +7,6 @@ import (
 	"html"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -142,28 +141,27 @@ func SendTelegramGallerySelectionNotification(gallery models.Gallery, selection 
 	log.Println("Telegram notification sent for gallery selection:", gallery.Slug)
 }
 
-func buildGallerySelectionMessages(gallery models.Gallery, selection models.Selection, files []string, whatsapp string) []string {
+func buildGallerySelectionMessages(gallery models.Gallery, selection models.Selection, files []string, _ string) []string {
 	notes := selection.ClientNotes
 	if strings.TrimSpace(notes) == "" {
 		notes = ""
 	}
-	
+
 	summary := fmt.Sprintf(
-		"● Pilihan Foto Baru Diterima!\n\n"+
-			"Klien: %s\n"+
-			"WhatsApp: %s\n"+
-			"Galeri: %s\n"+
-			"Total Dipilih: %d foto\n"+
-			"Catatan Klien: %s\n\n"+
-			"Daftar File:\n",
-		html.EscapeString(gallery.ClientName), html.EscapeString(whatsapp), html.EscapeString(gallery.Title),
+		"🖼️ <b>Pilihan Foto Baru Diterima!</b>\n\n"+
+			"<b>Klien:</b> %s\n"+
+			"<b>Galeri:</b> %s\n"+
+			"<b>Total Dipilih:</b> %d foto\n"+
+			"<b>Catatan Klien:</b> %s\n\n"+
+			"<b>Daftar File:</b>\n",
+		html.EscapeString(gallery.ClientName), html.EscapeString(gallery.Title),
 		selection.TotalSelected, html.EscapeString(notes),
 	)
 
 	const telegramSafeLimit = 3800
 	messages := []string{}
 	current := summary
-	
+
 	for _, fileName := range SortFileNamesNatural(files) {
 		label := html.EscapeString(fileName)
 		line := fmt.Sprintf("- %s\n", label)
@@ -173,7 +171,7 @@ func buildGallerySelectionMessages(gallery models.Gallery, selection models.Sele
 		}
 		current += line
 	}
-	
+
 	if current != "" {
 		messages = append(messages, current)
 	}
