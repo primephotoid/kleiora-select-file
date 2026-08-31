@@ -17,7 +17,7 @@ export function SiteHeader() {
           <Link href="/" className="hover:text-[var(--text)]">Home</Link>
           <Link href="/#process" className="hover:text-[var(--text)]">Cara Booking</Link>
           <Link href="/#portfolio" className="hover:text-[var(--text)]">Portofolio</Link>
-          <Link href="/booking" className="hover:text-[var(--text)]">Booking</Link>
+          <Link href="/booking" className="hover:text-[var(--text)]">Pricelist</Link>
         </nav>
         <div className="hidden items-center gap-3 md:flex">
           <a href="https://wa.me/6285752528300" className="hidden items-center gap-2 rounded-full bg-[var(--gold)] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[var(--gold-dark)] md:inline-flex">
