@@ -35,7 +35,7 @@ export function SiteHeader() {
             <Link href="/" onClick={() => setOpen(false)}>Home</Link>
             <Link href="/#process" onClick={() => setOpen(false)}>Cara Booking</Link>
             <Link href="/#portfolio" onClick={() => setOpen(false)}>Portofolio</Link>
-            <Link href="/booking" onClick={() => setOpen(false)} className="text-[var(--gold-dark)]">Booking Sekarang</Link>
+            <Link href="/booking" onClick={() => setOpen(false)} className="text-[var(--gold-dark)]">Pricelist</Link>
           </div>
         </nav>
       )}
