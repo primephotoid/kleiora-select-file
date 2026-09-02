@@ -94,7 +94,7 @@ export default async function HomePage() {
       />
       <SiteHeader />
       <main>
-        <section className="relative flex min-h-screen items-center justify-center bg-[var(--bg)] pb-12 pt-32 sm:pt-40 text-center">
+        <section className="relative flex min-h-screen items-center justify-center bg-[var(--bg)] pb-32 pt-24 sm:pb-12 sm:pt-40 text-center">
           <div className="absolute inset-0 z-0">
             <Image src="/bg-main-v3.jpg" alt="Sesi foto wisuda profesional bersama Kleiora Grads" fill className="object-cover" priority unoptimized />
             <div className="absolute inset-0 bg-black/40"></div>
