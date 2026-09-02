@@ -110,8 +110,8 @@ export default async function HomePage() {
                 <span className="sr-only">Kleiora Grads</span>
                 <span className="font-serif text-5xl font-semibold tracking-tight text-white drop-shadow-lg sm:text-7xl">Kleiora<span className="text-[#eda98a]">.grads</span></span>
               </h1>
-              <p className="mt-6 max-w-2xl text-base leading-relaxed text-white drop-shadow-md">
-                Terima kasih sudah mempercayakan momen berharga ini kepada kami. Kami siap mengabadikan pencapaian terbaikmu dengan hasil foto wisuda yang elegan dan berkesan.
+              <p className="mt-6 max-w-2xl text-base Gabriela Stencil text-white drop-shadow-md">
+                Rayakan Momen Spesialmu Dengan Kleiora Grads
               </p>
               <p className="mt-4 font-serif text-base italic text-white drop-shadow-md">
                 Let's make your graduation moment unforgettable! ✨
