@@ -110,10 +110,7 @@ export default async function HomePage() {
                 <span className="sr-only">Kleiora Grads</span>
                 <span className="font-serif text-5xl font-semibold tracking-tight text-white drop-shadow-lg sm:text-7xl">Kleiora<span className="text-[#eda98a]">.grads</span></span>
               </h1>
-              <p className="mt-6 max-w-2xl text-base Gabriela Stencil text-white drop-shadow-md">
-                Rayakan Momen Spesialmu Dengan Kleiora Grads.
-              </p>
-              <p className="mt-4 font-serif text-base italic text-white drop-shadow-md">
+              <p className="mt-6 font-serif text-lg md:text-xl italic text-white drop-shadow-md">
                 Let's make your graduation moment unforgettable! ✨
               </p>
               <Link href="/booking" className="mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--gold)] px-8 py-4 text-sm font-bold text-[var(--bg)] transition hover:opacity-90 shadow-xl">
@@ -123,7 +120,7 @@ export default async function HomePage() {
               <div className="mt-12 flex flex-wrap justify-center gap-x-8 gap-y-4 text-[11px] font-bold text-white uppercase drop-shadow-[0_1.5px_1.5px_rgba(0,0,0,0.8)] tracking-wider">
                 <span className="flex items-center gap-2"><CalendarCheck className="h-4 w-4 text-[var(--gold)] drop-shadow-none" /> Jadwal online</span>
                 <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-[var(--gold)] drop-shadow-none" /> Terverifikasi admin</span>
-                <span className="flex items-center gap-2"><Images className="h-4 w-4 text-[var(--gold)] drop-shadow-none" /> Bebas pilih hasil</span>
+                <span className="flex items-center gap-2"><Images className="h-4 w-4 text-[var(--gold)] drop-shadow-none" /> Pilih foto tanpa ribet</span>
               </div>
             </div>
           </div>
