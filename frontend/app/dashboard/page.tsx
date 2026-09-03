@@ -69,8 +69,22 @@ export default function DashboardPage() {
   const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>(emptyPortfolioForm as PortfolioItem);
   const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const lastScrollY = useRef(0);
 
   useBodyScrollLock(Boolean(showCreate || showCreatePackage || showCreatePortfolio || paymentProofPreview));
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const current = window.scrollY;
+      // Selalu tampilkan header ketika dekat bagian atas halaman
+      if (current < 10) { setHeaderVisible(true); lastScrollY.current = current; return; }
+      setHeaderVisible(current < lastScrollY.current);
+      lastScrollY.current = current;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   function askConfirmation(options: Omit<ConfirmationRequest, 'resolve'>) {
     return new Promise<boolean>(resolve => setConfirmation({ ...options, resolve }));
@@ -354,7 +368,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f6f2]">
-      <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-white/90 backdrop-blur-xl">
+      <header className={`sticky top-0 z-30 border-b border-[var(--line)] bg-white/90 backdrop-blur-xl transition-transform duration-300 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
           <Link href="/" aria-label="Kleiora Grads — Beranda" className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} priority className="h-9 w-auto" /><span className="font-serif text-xl font-semibold sm:text-2xl">Kleiora<span className="text-[#a54f3b]">.grads</span></span></Link>
           <div className="flex items-center gap-3">
