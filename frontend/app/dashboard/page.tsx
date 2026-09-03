@@ -499,11 +499,10 @@ function PaymentProofModal({ code, url, processing, onClose, onVerify }: { code:
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Scroll lock sudah ditangani oleh useBodyScrollLock di parent (DashboardPage).
+    // Jangan lock/unlock overflow di sini agar tidak terjadi konflik yang menyebabkan halaman freeze.
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
