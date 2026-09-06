@@ -632,8 +632,25 @@ function BookingFlow() {
         )}
 
         {step === 4 && booking && (
-          <section className="mx-auto max-w-2xl rounded-3xl border border-[var(--line)] bg-[var(--surface)] p-7 text-center shadow-sm sm:p-10"><CheckCircle2 className="mx-auto h-14 w-14 text-[var(--green)]" /><p className="mt-5 text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Booking tercatat</p><h2 className="mt-2 font-serif text-4xl">Menunggu verifikasi pembayaran</h2><p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-[var(--muted)]">Simpan kode booking berikut. Slotmu akan dikonfirmasi setelah admin memeriksa bukti pembayaran.</p><div className="my-7 rounded-2xl bg-[var(--surface2)] p-6"><p className="text-xs uppercase tracking-wider text-[var(--muted)]">Kode booking</p><p className="mt-2 break-all font-mono text-xl font-bold">{booking.code}</p><div className="mt-5 grid gap-3 text-left text-sm sm:grid-cols-2"><Detail label="Paket" value={booking.package.name}/><Detail label="Total dibayar" value={formatRupiah(booking.amount_due)}/><Detail label="Tanggal" value={booking.session_date}/><Detail label="Jam" value={`${booking.session_hour}.00 WITA`}/></div></div>
-            <div className="mt-7 flex flex-wrap justify-center gap-3"><a className="btn-secondary px-5 py-3 text-sm" target="_blank" rel="noreferrer" href={`https://wa.me/6285752528300?text=${encodeURIComponent(`Halo Admin Kleiora.grads, saya ingin mengonfirmasi booking ${booking.code}.`)}`}>Hubungi Admin</a><Link className="btn-secondary px-5 py-3 text-sm" href="/">Kembali ke Beranda</Link></div>
+          <section className="mx-auto max-w-2xl rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 text-center shadow-sm sm:p-10">
+              <CheckCircle2 className="mx-auto h-10 w-10 sm:h-14 sm:w-14 text-[var(--green)]" />
+              <p className="mt-3 text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Booking tercatat</p>
+              <h2 className="mt-1 font-serif text-2xl sm:text-4xl">Menunggu verifikasi pembayaran</h2>
+              <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-[var(--muted)]">Simpan kode booking berikut. Slotmu akan dikonfirmasi setelah admin memeriksa bukti pembayaran.</p>
+              <div className="my-4 rounded-xl bg-[var(--surface2)] p-4">
+                <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Kode booking</p>
+                <p className="mt-1 overflow-x-auto whitespace-nowrap font-mono text-base font-bold sm:text-xl">{booking.code}</p>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-left text-sm">
+                  <Detail label="Paket" value={booking.package.name}/>
+                  <Detail label="Total dibayar" value={formatRupiah(booking.amount_due)}/>
+                  <Detail label="Tanggal" value={booking.session_date}/>
+                  <Detail label="Jam" value={`${booking.session_hour}.00 WITA`}/>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                <a className="btn-secondary px-4 py-2 text-sm" target="_blank" rel="noreferrer" href={`https://wa.me/6285752528300?text=${encodeURIComponent(`Halo Admin Kleiora.grads, saya ingin mengonfirmasi booking ${booking.code}.`)}`}>Hubungi Admin</a>
+                <Link className="btn-secondary px-4 py-2 text-sm" href="/">Kembali ke Beranda</Link>
+              </div>
           </section>
         )}
       </main>
