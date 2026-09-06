@@ -484,14 +484,21 @@ export default function DashboardPage() {
               <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
               <div className="space-y-3">
                 {analytics?.views_by_path
-                  ?.filter(p => !p.path.startsWith('/g/') && !p.path.startsWith('/dashboard') && !p.path.startsWith('/studio'))
-                  .map(p => (
-                  <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm">
-                    <span className="text-gray-600">{p.path === '/' ? 'home' : p.path}</span>
-                    <span className="font-semibold">{p.count}</span>
-                  </div>
-                ))}
-                {!analytics?.views_by_path?.filter(p => !p.path.startsWith('/g/') && !p.path.startsWith('/dashboard') && !p.path.startsWith('/studio')).length && <p className="text-sm text-gray-500">Belum ada data.</p>}
+                  ?.filter(p => !p.path.startsWith('/dashboard') && !p.path.startsWith('/login'))
+                  .map(p => {
+                    let label = p.path;
+                    if (p.path === '/') label = 'Home';
+                    else if (p.path === '/booking') label = 'Pricelist & Booking';
+                    else if (p.path === '/studio') label = 'Studio (login admin)';
+                    else if (p.path.startsWith('/g/')) label = `Galeri klien: ${p.path.replace('/g/', '')}`;
+                    return (
+                      <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm last:border-b-0">
+                        <span className="text-gray-600">{label}</span>
+                        <span className="font-semibold">{p.count}</span>
+                      </div>
+                    );
+                  })}
+                {!analytics?.views_by_path?.filter(p => !p.path.startsWith('/dashboard') && !p.path.startsWith('/login')).length && <p className="text-sm text-gray-500">Belum ada data.</p>}
               </div>
             </div>
           </section>

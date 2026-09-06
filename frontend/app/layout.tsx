@@ -37,10 +37,6 @@ export const metadata: Metadata = {
       'max-video-preview': -1,
     },
   },
-  icons: {
-    icon: [{ url: '/icon.png', type: 'image/png', sizes: '512x512' }],
-    shortcut: '/icon.png',
-  },
   openGraph: {
     type: 'website',
     locale: 'id_ID',
