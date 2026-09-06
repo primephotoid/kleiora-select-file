@@ -489,7 +489,7 @@ export default function DashboardPage() {
                     let label = p.path;
                     if (p.path === '/') label = 'Home';
                     else if (p.path === '/booking') label = 'Pricelist & Booking';
-                    else if (p.path === '/studio') label = 'Studio (login admin)';
+                    else if (p.path === '/studio/login') label = 'Login Admin';
                     else if (p.path.startsWith('/g/')) {
                       const slug = p.path.replace('/g/', '');
                       const gallery = galleries.find(g => g.slug === slug);
