@@ -483,26 +483,15 @@ export default function DashboardPage() {
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
               <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
               <div className="space-y-3">
-                {analytics?.views_by_path
-                  ?.filter(p => !p.path.startsWith('/dashboard') && !p.path.startsWith('/login'))
-                  .map(p => {
-                    let label = p.path;
-                    if (p.path === '/') label = 'Home';
-                    else if (p.path === '/booking') label = 'Pricelist & Booking';
-                    else if (p.path === '/studio/login') label = 'Login Admin';
-                    else if (p.path.startsWith('/g/')) {
-                      const slug = p.path.replace('/g/', '');
-                      const gallery = galleries.find(g => g.slug === slug);
-                      label = gallery ? `Galeri: ${gallery.client_name || gallery.title}` : `Galeri: ${slug.slice(0, 8)}…`;
-                    }
+                {[{path: '/', label: 'Home'}, {path: '/booking', label: 'Pricelist & Booking'}].map(({path, label}) => {
+                    const entry = analytics?.views_by_path?.find(p => p.path === path);
                     return (
-                      <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm last:border-b-0">
+                      <div key={path} className="flex items-center justify-between border-b pb-2 text-sm last:border-b-0">
                         <span className="text-gray-600">{label}</span>
-                        <span className="font-semibold">{p.count}</span>
+                        <span className="font-semibold">{entry?.count ?? 0}</span>
                       </div>
                     );
                   })}
-                {!analytics?.views_by_path?.filter(p => !p.path.startsWith('/dashboard') && !p.path.startsWith('/login')).length && <p className="text-sm text-gray-500">Belum ada data.</p>}
               </div>
             </div>
           </section>
