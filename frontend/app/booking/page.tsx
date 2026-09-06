@@ -6,6 +6,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, ImageIcon, Copy } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl } from '@/lib/api';
+import { LocationAutocomplete } from '@/components/LocationAutocomplete';
 import imageCompression from 'browser-image-compression';
 
 interface Slot { hour: string; remaining: number; available: boolean }
@@ -369,8 +370,16 @@ function BookingFlow() {
                   </div>
                 </div>
                 <div>
-                  <Field label={<span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[var(--gold)]" /> Lokasi Sesi Foto</span>} error={fieldErrors.session_location}><input required aria-invalid={Boolean(fieldErrors.session_location)} value={form.session_location} onChange={e => updateField('session_location', e.target.value)} className="field" placeholder="Contoh: Taman Ismail Marzuki, Jakarta" /></Field>
-                  <p className="mt-1 text-[11px] text-[var(--muted)]">Sebutkan lokasi atau area yang Anda inginkan. <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--gold-dark)] hover:underline">Buka Google Maps &rarr;</a></p>
+                  <Field label={<span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[var(--gold)]" /> Lokasi Sesi Foto</span>} error={fieldErrors.session_location}>
+                    <LocationAutocomplete
+                      value={form.session_location}
+                      onChange={val => updateField('session_location', val)}
+                      placeholder="Contoh: Taman Ismail Marzuki, Jakarta"
+                      className="field"
+                      ariaInvalid={Boolean(fieldErrors.session_location)}
+                    />
+                  </Field>
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">Ketik nama lokasi dan pilih dari saran, atau cari di <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--gold-dark)] hover:underline">Google Maps &rarr;</a></p>
                 </div>
               </div>
               <div className="mt-5"><Field label="Catatan (opsional)"><textarea rows={3} value={form.notes} onChange={e => setForm({...form, notes:e.target.value})} className="field resize-none" placeholder="Informasi tambahan untuk tim kami" /></Field></div>
