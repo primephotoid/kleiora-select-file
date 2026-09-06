@@ -490,7 +490,11 @@ export default function DashboardPage() {
                     if (p.path === '/') label = 'Home';
                     else if (p.path === '/booking') label = 'Pricelist & Booking';
                     else if (p.path === '/studio') label = 'Studio (login admin)';
-                    else if (p.path.startsWith('/g/')) label = `Galeri klien: ${p.path.replace('/g/', '')}`;
+                    else if (p.path.startsWith('/g/')) {
+                      const slug = p.path.replace('/g/', '');
+                      const gallery = galleries.find(g => g.slug === slug);
+                      label = gallery ? `Galeri: ${gallery.client_name || gallery.title}` : `Galeri: ${slug.slice(0, 8)}…`;
+                    }
                     return (
                       <div key={p.path} className="flex items-center justify-between border-b pb-2 text-sm last:border-b-0">
                         <span className="text-gray-600">{label}</span>
