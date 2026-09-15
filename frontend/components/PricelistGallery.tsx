@@ -74,12 +74,7 @@ export function PricelistGallery({
                     className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
-
-                {/* Price tag badge */}
-                <div className="absolute top-2.5 left-2.5 z-10 rounded-full bg-black/40 backdrop-blur-md px-3 py-1 text-[11px] font-bold text-white border border-white/20">
-                  {formatRupiah(pkg.price)}
-                </div>
+                {/* Gradient overlay */}
               </div>
 
               {/* Card content */}
