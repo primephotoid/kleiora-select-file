@@ -281,6 +281,7 @@ func main() {
 	studio.Get("/galleries", h.ListGalleries)
 	studio.Post("/galleries", h.CreateGallery)
 	studio.Delete("/galleries/:id", h.DeleteGallery)
+	studio.Patch("/galleries/:slug/mark-sent", h.MarkGallerySent)
 	studio.Get("/galleries/:slug/export", h.ExportSelection)
 	studio.Get("/analytics", h.GetAnalyticsSummary)
 

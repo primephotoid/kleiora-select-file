@@ -260,6 +260,35 @@ export default function DashboardPage() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Galeri gagal dihapus.'); setRefreshing(false); }
   }
 
+  async function sendGallery(item: BookingItem) {
+    if (!item.gallery?.slug) return;
+    const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
+    const galleryURL = `${window.location.origin}/g/${item.gallery.slug}`;
+    const driveSection = item.gallery.drive_folder_id
+      ? `\n\n● Akses Foto Mentah & Hasil Edit:\nKakak juga bisa melihat dan mendownload semua foto mentah dan foto yang sudah diedit nanti melalui folder Google Drive ini:\n● https://drive.google.com/drive/folders/${item.gallery.drive_folder_id}\n\n● Penting: File di link Google Drive dapat diakses selama 6 bulan. Apabila lebih dari 6 bulan file sudah tidak ada, maka hal tersebut sudah diluar tanggung jawab Kleiora.grads.`
+      : '';
+    const message = `Halo kak ${item.full_name}, terima kasih atas sesinya bersama Kleiora.grads!\n\nGaleri foto kakak sudah siap nih. Silakan klik link di bawah ini untuk melihat dan memilih foto mana saja yang ingin diedit sesuai kuota paket:\n\n● ${galleryURL}${driveSection}\n\nJika ada kesulitan saat memilih, jangan ragu untuk bertanya ya kak!`;
+    window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+
+    try {
+      await apiRequest(`/studio/galleries/${encodeURIComponent(item.gallery.slug)}/mark-sent`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+      });
+      setBookings(prev => prev.map(b => {
+        if (b.id === item.id && b.gallery) {
+          return {
+            ...b,
+            gallery: { ...b.gallery, gallery_sent_at: new Date().toISOString() }
+          };
+        }
+        return b;
+      }));
+    } catch (err) {
+      console.error('Failed to mark gallery sent:', err);
+    }
+  }
+
   async function savePackage(event: FormEvent) {
     event.preventDefault(); setError(''); setCreating(true);
     try {
@@ -478,7 +507,7 @@ export default function DashboardPage() {
             <BookingTable
               bookings={bookings} meta={bookingMeta} processing={processing} sort={bookingSort} sortDirection={bookingSortDirection}
               onSort={column => { if (bookingSort === column) setBookingSortDirection(value => value === 'asc' ? 'desc' : 'asc'); else { setBookingSort(column); setBookingSortDirection('asc'); } setBookingPage(1); }}
-              onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete}
+              onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete} onSendGallery={sendGallery}
               onCreateGallery={item => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }}
               onPageChange={setBookingPage} perPage={bookingPerPage} onPerPageChange={value => { setBookingPage(1); setBookingPerPage(value); }}
             />
@@ -600,6 +629,7 @@ interface BookingTableProps {
   bookings: BookingItem[]; meta: BookingMeta; processing: string; sort: BookingSort; sortDirection: 'asc' | 'desc'; perPage: number;
   onSort: (column: BookingSort) => void; onVerify: (code: string) => void; onViewProof: (code: string) => void;
   onCreateGallery: (item: BookingItem) => void; onDelete: (code: string) => void; onComplete: (code: string) => void;
+  onSendGallery: (item: BookingItem) => void;
   onPageChange: (page: number) => void; onPerPageChange: (perPage: number) => void;
 }
 
@@ -629,7 +659,7 @@ function BookingTable(props: BookingTableProps) {
       </table>
     </div>
     <div className="mt-4 space-y-3 lg:hidden">
-      {bookings.map(item => <BookingCard key={item.id} item={item} processing={props.processing} onVerify={props.onVerify} onViewProof={props.onViewProof} onDelete={props.onDelete} onComplete={props.onComplete} onCreateGallery={() => props.onCreateGallery(item)} />)}
+      {bookings.map(item => <BookingCard key={item.id} item={item} processing={props.processing} onVerify={props.onVerify} onViewProof={props.onViewProof} onDelete={props.onDelete} onComplete={props.onComplete} onSendGallery={props.onSendGallery} onCreateGallery={() => props.onCreateGallery(item)} />)}
     </div>
     <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
@@ -653,21 +683,11 @@ function SortableHeader({ label, column, active, direction, onSort }: { label: s
   return <th className="px-4 py-3 font-bold"><button onClick={() => onSort(column)} className="inline-flex items-center gap-1 hover:text-[var(--text)]">{label}<span aria-hidden="true" className={active === column ? 'text-[var(--gold-dark)]' : 'text-transparent'}>{direction === 'asc' ? '▲' : '▼'}</span></button></th>;
 }
 
-function sendGalleryWhatsApp(item: BookingItem) {
-  if (!item.gallery?.slug) return;
-  const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
-  const galleryURL = `${window.location.origin}/g/${item.gallery.slug}`;
-  const driveSection = item.gallery.drive_folder_id
-    ? `\n\n● Akses Foto Mentah & Hasil Edit:\nKakak juga bisa melihat dan mendownload semua foto mentah dan foto yang sudah diedit nanti melalui folder Google Drive ini:\n● https://drive.google.com/drive/folders/${item.gallery.drive_folder_id}\n\n● Penting: File di link Google Drive dapat diakses selama 6 bulan. Apabila lebih dari 6 bulan file sudah tidak ada, maka hal tersebut sudah diluar tanggung jawab Kleiora.grads.`
-    : '';
-  const message = `Halo kak ${item.full_name}, terima kasih atas sesinya bersama Kleiora.grads!\n\nGaleri foto kakak sudah siap nih. Silakan klik link di bawah ini untuk melihat dan memilih foto mana saja yang ingin diedit sesuai kuota paket:\n\n● ${galleryURL}${driveSection}\n\nJika ada kesulitan saat memilih, jangan ragu untuk bertanya ya kak!`;
-  window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
-}
-
-function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: BookingTableProps & { item: BookingItem }) {
+function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery }: BookingTableProps & { item: BookingItem }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
   const isCompleted = item.status === 'completed';
   const hasGallery = !!item.gallery;
+  const hasUnsentGallery = hasGallery && !item.gallery?.gallery_sent_at;
   const sendReceipt = () => {
     const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     const message = `Halo kak *${item.full_name}*, terima kasih ya!\n\nPembayaran untuk sesi foto wisuda dengan Kleiora.grads (*Kode: ${item.code}*) sudah kami terima dan verifikasi.\n\n*Detail Sesi:*\n● Tanggal: ${dateStr}\n● Waktu: ${item.session_hour}.00 WITA\n● Lokasi: ${item.session_location}\n● Paket: ${item.package.name}\n\nKami tunggu kehadirannya ya kak!`;
@@ -683,15 +703,16 @@ function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGall
     <td className="px-4 py-4"><Status value={isCompleted ? 'completed' : item.payment_status} /></td>
     <td className="px-4 py-4"><div className="ml-auto flex flex-nowrap justify-end gap-1.5">
       {item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className={smallButton}><ExternalLink className="h-3 w-3" />Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className={`${smallButton} border-emerald-700 bg-emerald-700 text-white`}><CheckCircle2 className="h-3 w-3" />Verifikasi</button></>}
-      {isCompleted ? hasGallery && <button onClick={() => sendGalleryWhatsApp(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button> : hasGallery ? <><button onClick={() => sendGalleryWhatsApp(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
+      {isCompleted ? (hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>) : hasGallery ? <>{hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>}<button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
       <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>
     </div></td>
   </tr>;
 }
 
-function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void }) {
+function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void; onSendGallery: (item: BookingItem) => void }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
   const hasGallery = !!item.gallery;
+  const hasUnsentGallery = hasGallery && !item.gallery?.gallery_sent_at;
   const isCompleted = item.status === 'completed';
 
   const handleSendReceipt = () => {
@@ -702,7 +723,24 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
 
   return <article className="rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:border-[#d4c4ac] hover:shadow-sm"><div className="grid gap-5"><div><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{item.full_name}</h2><Status value={isCompleted ? 'completed' : item.payment_status} /></div><p className="mt-1 text-xs text-[var(--muted)]">{item.campus_name} · <span className="font-mono">{item.code}</span></p><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700"><MessageCircle className="h-3.5 w-3.5" />{item.whatsapp}</a></div><div className="space-y-2 text-sm"><p className="flex items-center gap-2 font-semibold"><CalendarDays className="h-4 w-4 text-[var(--gold-dark)]" />{formatDate(item.session_date)} · {item.session_hour}.00</p><p className="flex items-center gap-2 text-xs text-[var(--muted)]"><MapPin className="h-3.5 w-3.5" />{item.session_location}</p></div><div><p className="text-sm font-semibold">{item.package.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : item.payment_type === 'dp_custom' ? 'DP Custom' : 'Lunas'} · {formatRupiah(item.amount_due)}</p></div><div className="flex flex-nowrap gap-2 overflow-x-auto pb-2">
               {item.payment_status === 'submitted' && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs">{processing === `proof-${item.code}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />}Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className="flex flex-shrink-0 whitespace-nowrap items-center justify-center gap-2 rounded-full bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{processing === item.code ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}Verifikasi</button></>}
-              {isCompleted ? <><span className="flex-shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Selesai</span>{hasGallery && <button onClick={() => sendGalleryWhatsApp(item)} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button>}</> : hasGallery ? <><button onClick={() => sendGalleryWhatsApp(item)} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button><button onClick={() => onComplete(item.code)} disabled={processing !== ''} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs text-emerald-700 border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Tandai selesai</button></> : item.status === 'confirmed' ? <><button onClick={handleSendReceipt} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"><MessageCircle className="h-3.5 w-3.5" />Kirim resi</button><button onClick={onCreateGallery} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button></> : item.payment_status === 'pending' ? <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span> : null}
+              {isCompleted ? (
+                <>
+                  <span className="flex-shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Selesai</span>
+                  {hasUnsentGallery && <button onClick={() => onSendGallery(item)} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button>}
+                </>
+              ) : hasGallery ? (
+                <>
+                  {hasUnsentGallery && <button onClick={() => onSendGallery(item)} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"><Images className="h-3.5 w-3.5" />Kirim Galeri WA</button>}
+                  <button onClick={() => onComplete(item.code)} disabled={processing !== ''} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs text-emerald-700 border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Tandai selesai</button>
+                </>
+              ) : item.status === 'confirmed' ? (
+                <>
+                  <button onClick={handleSendReceipt} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"><MessageCircle className="h-3.5 w-3.5" />Kirim resi</button>
+                  <button onClick={onCreateGallery} className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs"><Plus className="h-3.5 w-3.5" />Buat galeri</button>
+                </>
+              ) : item.payment_status === 'pending' ? (
+                <span className="text-xs text-[var(--muted)]">Menunggu bukti pembayaran</span>
+              ) : null}
               <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>
             </div></div></article>;
 }

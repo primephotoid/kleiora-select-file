@@ -30,6 +30,7 @@ type Gallery struct {
 	Selection      *Selection `gorm:"foreignKey:GalleryID" json:"selection,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	GallerySentAt  *time.Time `json:"gallery_sent_at,omitempty"`
 }
 
 type Package struct {

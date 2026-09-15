@@ -844,6 +844,21 @@ func (h *Handler) DeleteGallery(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Gallery deleted successfully"})
 }
 
+func (h *Handler) MarkGallerySent(c *fiber.Ctx) error {
+	var gallery models.Gallery
+	if err := h.db.Where("slug = ?", c.Params("slug")).First(&gallery).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Galeri tidak ditemukan")
+	}
+	if gallery.GallerySentAt != nil {
+		return apiError(c, fiber.StatusConflict, "Galeri sudah pernah dikirim ke klien")
+	}
+	now := time.Now()
+	if err := h.db.Model(&gallery).Update("gallery_sent_at", now).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal menandai galeri sebagai terkirim")
+	}
+	return c.JSON(fiber.Map{"message": "Galeri ditandai terkirim", "gallery_sent_at": now})
+}
+
 func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 	code := strings.ToUpper(strings.TrimSpace(c.Params("code")))
 

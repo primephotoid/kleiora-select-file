@@ -583,3 +583,40 @@ func TestRegistrationCreatesAdminOnlyOutsideProduction(t *testing.T) {
 		t.Fatalf("expected production registration to return 403, got %d", response.StatusCode)
 	}
 }
+
+func TestMarkGallerySent(t *testing.T) {
+	app, db := bookingTestApp(t)
+	h := NewHandler(db, &config.Config{JWTSecret: "secret"}, services.NewDriveService(""))
+	app.Patch("/studio/galleries/:slug/mark-sent", h.MarkGallerySent)
+
+	gallery := models.Gallery{
+		Title: "Test Gallery",
+		Slug:  "test-gallery-sent-slug",
+	}
+	db.Create(&gallery)
+
+	req := httptest.NewRequest(http.MethodPatch, "/studio/galleries/test-gallery-sent-slug/mark-sent", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
+	}
+
+	var updated models.Gallery
+	db.Where("slug = ?", "test-gallery-sent-slug").First(&updated)
+	if updated.GallerySentAt == nil {
+		t.Fatal("expected GallerySentAt to be set")
+	}
+
+	req2 := httptest.NewRequest(http.MethodPatch, "/studio/galleries/test-gallery-sent-slug/mark-sent", nil)
+	resp2, err := app.Test(req2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp2.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict on second send attempt, got %d", resp2.StatusCode)
+	}
+}
+

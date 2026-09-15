@@ -56,7 +56,7 @@ export interface BookingItem {
   payment_method?: string;
   notes?: string;
   created_at?: string;
-  gallery?: { id: number; slug: string; title: string; status: string; drive_folder_id?: string; selection?: { total_selected: number } };
+  gallery?: { id: number; slug: string; title: string; status: string; drive_folder_id?: string; gallery_sent_at?: string; selection?: { total_selected: number } };
 }
 
 export interface PortfolioItem {
