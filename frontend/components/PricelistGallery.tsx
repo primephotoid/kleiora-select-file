@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { PackageItem, formatRupiah, getImageUrl } from '@/lib/api';
-import { ArrowRight, Check, ChevronDown, Clock, Images, MapPin, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronDown, Clock, Images, MapPin, Sparkles } from 'lucide-react';
 
 interface Props {
   packages: PackageItem[];
@@ -126,21 +126,9 @@ export function PricelistGallery({
                   <button
                     type="button"
                     onClick={() => onSelectPackage(pkg.code)}
-                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full py-2.5 px-4 text-xs font-bold transition active:scale-[0.98] ${
-                      isSelected
-                        ? 'bg-[var(--gold)] text-white shadow-md'
-                        : 'bg-[var(--text)] text-[var(--surface)] hover:bg-[#34312d]'
-                    }`}
+                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--text)] text-[var(--surface)] hover:bg-[#34312d] py-2.5 px-4 text-xs font-bold transition active:scale-[0.98]"
                   >
-                    {isSelected ? (
-                      <>
-                        <Check className="h-3.5 w-3.5" /> Terpilih
-                      </>
-                    ) : (
-                      <>
-                        Pilih Paket <ArrowRight className="h-3.5 w-3.5" />
-                      </>
-                    )}
+                    Pilih Paket <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 ) : (
                   <Link
