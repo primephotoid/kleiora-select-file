@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getImageUrl, PortfolioItem } from '@/lib/api';
+import { Images, ChevronDown } from 'lucide-react';
 
 const LIMIT = 15;
 
@@ -80,6 +81,7 @@ export function PortfolioGallery({ initialPortfolios, initialHasMore }: Props) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loading, setLoading] = useState(false);
+  const [showAllMobile, setShowAllMobile] = useState(false);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const isFetching = useRef(false);
 
@@ -132,11 +134,19 @@ export function PortfolioGallery({ initialPortfolios, initialHasMore }: Props) {
         }
       `}</style>
 
-      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {/* Real cards */}
-        {portfolios.map(port => (
-          <PortfolioCard key={port.id} port={port} />
-        ))}
+        {portfolios.map((port, idx) => {
+          const isHiddenOnMobile = !showAllMobile && idx >= 4;
+          return (
+            <div
+              key={port.id}
+              className={isHiddenOnMobile ? 'hidden sm:block' : 'block'}
+            >
+              <PortfolioCard port={port} />
+            </div>
+          );
+        })}
 
         {/* Skeleton cards appear inside the grid while loading */}
         {loading && Array.from({ length: LIMIT }).map((_, i) => (
@@ -144,10 +154,29 @@ export function PortfolioGallery({ initialPortfolios, initialHasMore }: Props) {
         ))}
       </div>
 
-      {/* Sentinel — triggers loadMore when scrolled into view */}
-      <div ref={sentinelRef} aria-hidden="true" className="h-1" />
+      {/* Show "Lihat Semua Portofolio" button on mobile if collapsed */}
+      {!showAllMobile && portfolios.length > 4 && (
+        <div className="mt-8 text-center sm:hidden">
+          <button
+            type="button"
+            onClick={() => setShowAllMobile(true)}
+            className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-[var(--gold-dark)] bg-white px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-[var(--gold-dark)] shadow-sm transition hover:bg-[var(--gold-dark)] hover:text-white active:scale-[0.98]"
+          >
+            <Images className="h-4 w-4" />
+            Lihat Semua Portofolio ({portfolios.length}+ Foto)
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
-      {!hasMore && portfolios.length > 0 && !loading && (
+      {/* Sentinel — triggers loadMore when scrolled into view (active on desktop or when expanded on mobile) */}
+      <div
+        ref={sentinelRef}
+        aria-hidden="true"
+        className={`h-1 ${!showAllMobile ? 'hidden sm:block' : ''}`}
+      />
+
+      {(showAllMobile || portfolios.length <= 4) && !hasMore && portfolios.length > 0 && !loading && (
         <p className="mt-8 text-center text-xs font-bold uppercase tracking-[.2em] text-[var(--muted)]">
           Semua foto telah ditampilkan
         </p>
