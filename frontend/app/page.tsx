@@ -4,7 +4,8 @@ import { ArrowRight, CalendarCheck, Check, Images, MessageCircle, ShieldCheck, S
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ReviewSection } from '@/components/ReviewSection';
 import { PortfolioGallery } from '@/components/PortfolioGallery';
-import { API_BASE_URL, formatRupiah, getImageUrl, PortfolioItem, ReviewItem } from '@/lib/api';
+import { PricelistGallery } from '@/components/PricelistGallery';
+import { API_BASE_URL, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem } from '@/lib/api';
 
 const structuredData = {
   '@context': 'https://schema.org',
@@ -57,6 +58,17 @@ interface PortfolioPageData {
   hasMore: boolean;
 }
 
+async function getPackages(): Promise<PackageItem[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/packages`, { next: { revalidate: 60 } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.packages || [];
+  } catch {
+    return [];
+  }
+}
+
 async function getPortfolios(): Promise<PortfolioPageData> {
   try {
     const res = await fetch(`${API_BASE_URL}/portfolios?page=1&limit=15`, { next: { revalidate: 60 } });
@@ -83,6 +95,7 @@ async function getReviews(): Promise<ReviewItem[]> {
 }
 
 export default async function HomePage() {
+  const packages = await getPackages();
   const { portfolios, hasMore } = await getPortfolios();
   const reviews = await getReviews();
 
@@ -138,6 +151,21 @@ export default async function HomePage() {
             </div>
           </div>
         </section>
+
+        {packages.length > 0 && (
+          <section id="pricelist" className="border-y border-[var(--line)] bg-[var(--surface)] py-24">
+            <div className="mx-auto max-w-6xl px-6">
+              <PricelistGallery
+                packages={packages}
+                subtitle="Pricelist foto wisuda"
+                title="Pilihan paket sesuai kebutuhanmu"
+                onSelectPackage={(code) => {
+                  window.location.href = `/booking?package=${code}`;
+                }}
+              />
+            </div>
+          </section>
+        )}
 
         {portfolios.length > 0 && (
           <section id="portfolio" className="border-y border-[var(--line)] bg-[var(--surface2)] py-24">

@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock, Loader2, Upload, Map
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl } from '@/lib/api';
 import { LocationAutocomplete } from '@/components/LocationAutocomplete';
+import { PricelistGallery } from '@/components/PricelistGallery';
 import imageCompression from 'browser-image-compression';
 
 interface Slot { hour: string; remaining: number; available: boolean }
@@ -284,37 +285,20 @@ function BookingFlow() {
 
         {step === 1 && (
           <section>
-            {loading ? <div className="flex justify-center py-24"><Loader2 className="h-7 w-7 animate-spin text-[var(--gold-dark)]" /></div> : (
-              <div className="grid gap-6 lg:grid-cols-3">
-                {packages.map(pkg => (
-                  <div key={pkg.code} className="overflow-hidden rounded-3xl border border-[var(--line)] bg-[var(--surface)] text-left transition hover:-translate-y-1">
-                    <div className="relative aspect-[16/9]">
-                      {pkg.image_path?.match(/\.(mp4|webm)$/i) ? (
-                        <video src={getImageUrl(pkg.image_path)} autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
-                      ) : (
-                        <img src={getImageUrl(pkg.image_path)} alt={pkg.name} className="absolute inset-0 h-full w-full object-cover object-[center_30%]" />
-                      )}
-                    </div>
-                    <div className="p-6">
-                      <h2 className="font-serif text-2xl font-semibold">{pkg.name}</h2>
-                      <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(pkg.price)}</p>
-                      <p className="mt-4 text-sm leading-6 text-[var(--muted)]">{pkg.description}</p>
-                      <div className="mt-5 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
-                        <span>{pkg.code === 'cinematic' ? '1 jam take' : (pkg.duration_label || `${pkg.duration_hours} jam sesi foto`)}</span>
-                        <span>{pkg.code === 'cinematic' ? 'Include edit' : `${pkg.location_count} lokasi`}</span>
-                        <span>{pkg.code === 'cinematic' ? '1x free revisi edit' : (pkg.edited_photos > 0 ? `${pkg.edited_photos} foto edited` : '1x free revisi edit')}</span>
-                        <span>{pkg.includes_print || (pkg.code === 'cinematic' ? 'Hasil durasi menyesuaikan' : 'Semua soft file')}</span>
-                      </div>
-                      <button
-                        onClick={() => { setSelectedCode(pkg.code); setStep(2); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                        className="btn-primary mt-6 w-full px-5 py-3.5"
-                      >
-                        Pilih Paket <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            {loading ? (
+              <div className="flex justify-center py-24">
+                <Loader2 className="h-7 w-7 animate-spin text-[var(--gold-dark)]" />
               </div>
+            ) : (
+              <PricelistGallery
+                packages={packages}
+                selectedCode={selectedCode}
+                onSelectPackage={(code) => {
+                  setSelectedCode(code);
+                  setStep(2);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
             )}
           </section>
         )}
