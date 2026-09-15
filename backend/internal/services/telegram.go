@@ -204,3 +204,55 @@ func postTelegramHTMLMessage(endpoint, chatID, message string) error {
 	}
 	return nil
 }
+
+// SendTelegramFGReminderNotification sends an H-1 alert to Admin's Telegram so admin contacts the photographer.
+func SendTelegramFGReminderNotification(booking models.Booking) {
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+
+	if botToken == "" || chatID == "" {
+		log.Println("Telegram credentials not configured. Skipping FG reminder notification.")
+		return
+	}
+
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
+
+	sessionDateFmt := booking.SessionDate
+	parts := strings.Split(booking.SessionDate, "-")
+	if len(parts) == 3 {
+		sessionDateFmt = fmt.Sprintf("%s/%s/%s", parts[2], parts[1], parts[0])
+	}
+
+	pkgName := booking.Package.Name
+	if pkgName == "" {
+		pkgName = "Paket Foto"
+	}
+
+	message := fmt.Sprintf(
+		"⏰ <b>PENGINGAT SESI FOTO (H-1)</b>\n\n"+
+			"Halo Admin! Besok ada jadwal sesi foto klien. <b>Jangan lupa hubungi & konfirmasi Fotografer (FG)!</b>\n\n"+
+			"<b>Kode Booking:</b> <code>%s</code>\n"+
+			"<b>Klien:</b> %s\n"+
+			"<b>Kampus:</b> %s\n"+
+			"<b>WhatsApp Klien:</b> %s\n"+
+			"<b>Paket:</b> %s\n"+
+			"<b>Tanggal Sesi:</b> %s\n"+
+			"<b>Jam Sesi:</b> %s WITA\n"+
+			"<b>Lokasi:</b> %s\n\n"+
+			"📲 Segera pastikan jadwal FG sudah terkonfirmasi!",
+		html.EscapeString(booking.Code),
+		html.EscapeString(booking.FullName),
+		html.EscapeString(booking.CampusName),
+		html.EscapeString(booking.WhatsApp),
+		html.EscapeString(pkgName),
+		sessionDateFmt,
+		html.EscapeString(booking.SessionHour),
+		html.EscapeString(booking.SessionLocation),
+	)
+
+	if err := postTelegramHTMLMessage(endpoint, chatID, message); err != nil {
+		log.Printf("Failed to send FG reminder telegram message for %s: %v\n", booking.Code, err)
+	} else {
+		log.Println("Telegram FG reminder notification sent for booking:", booking.Code)
+	}
+}

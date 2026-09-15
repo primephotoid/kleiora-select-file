@@ -301,8 +301,40 @@ func main() {
 	studio.Patch("/reviews/:id/approve", h.ToggleReviewApproval)
 	studio.Delete("/reviews/:id", h.DeleteReview)
 
+	// Start background worker for FG photo session reminders (H-1)
+	startFGReminderWorker(db)
+
 	log.Printf("Starting Kleiora Fiber API on port :%s", cfg.Port)
 	if err := app.Listen(fmt.Sprintf(":%s", cfg.Port)); err != nil {
 		log.Fatalf("Server failed to run: %v", err)
+	}
+}
+
+func startFGReminderWorker(db *gorm.DB) {
+	ticker := time.NewTicker(30 * time.Minute)
+	go func() {
+		checkAndSendFGReminders(db)
+		for range ticker.C {
+			checkAndSendFGReminders(db)
+		}
+	}()
+}
+
+func checkAndSendFGReminders(db *gorm.DB) {
+	now := time.Now()
+	tomorrowStr := now.AddDate(0, 0, 1).Format("2006-01-02")
+	todayStr := now.Format("2006-01-02")
+
+	var upcomingBookings []models.Booking
+	if err := db.Preload("Package").Where("(session_date = ? OR session_date = ?) AND status != 'cancelled' AND reminder_sent_at IS NULL", tomorrowStr, todayStr).Find(&upcomingBookings).Error; err != nil {
+		log.Printf("[FG Reminder Worker] Error fetching upcoming bookings: %v\n", err)
+		return
+	}
+
+	for _, b := range upcomingBookings {
+		log.Printf("[FG Reminder Worker] Sending H-1 FG reminder for booking %s (Session Date: %s)\n", b.Code, b.SessionDate)
+		services.SendTelegramFGReminderNotification(b)
+		nowTime := time.Now()
+		db.Model(&models.Booking{}).Where("id = ?", b.ID).Update("reminder_sent_at", &nowTime)
 	}
 }

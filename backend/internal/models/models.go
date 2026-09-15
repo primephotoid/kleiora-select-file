@@ -101,6 +101,7 @@ type Booking struct {
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 	VerifiedAt          *time.Time `json:"verified_at,omitempty"`
+	ReminderSentAt      *time.Time `json:"reminder_sent_at,omitempty"`
 	Gallery             *Gallery   `gorm:"foreignKey:BookingID" json:"gallery,omitempty"`
 }
 

@@ -118,6 +118,21 @@ export default function DashboardPage() {
     if (data.meta.total_pages > 0 && bookingPage > data.meta.total_pages) setBookingPage(data.meta.total_pages);
   }
 
+  const upcomingReminders = useMemo(() => {
+    if (!bookings) return [];
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+    return bookings.filter(b => 
+      b.status !== 'cancelled' && (b.session_date === tomorrowStr || b.session_date === todayStr)
+    );
+  }, [bookings]);
+
   async function loadBookings(background = true) {
     if (background) setRefreshing(true);
     setError('');
@@ -409,7 +424,53 @@ export default function DashboardPage() {
         </div>
 
         {loading ? <DashboardSkeleton /> : tab === 'bookings' ? (
-          <section className="mt-5">
+          <section className="mt-5 space-y-4">
+            {upcomingReminders.length > 0 && (
+              <div className="overflow-hidden rounded-2xl border border-amber-300 bg-amber-50/90 p-4.5 text-amber-900 shadow-sm">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white font-bold shadow-xs text-base">
+                    ⏰
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-sm text-amber-950">
+                        Pengingat H-1 / Sesi Foto Besok ({upcomingReminders.length} Sesi Terjadwal)
+                      </h4>
+                      <span className="inline-flex items-center rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                        Penting: Hubungi FG!
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-amber-800">
+                      Admin, jangan lupa untuk segera mengonfirmasi dan menghubungi Fotografer (FG) untuk jadwal sesi klien berikut:
+                    </p>
+                    <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                      {upcomingReminders.map(b => (
+                        <div key={b.id} className="flex items-center justify-between gap-2.5 rounded-xl bg-white p-3 border border-amber-200/90 shadow-2xs">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs text-gray-900 truncate">{b.full_name} ({b.code})</div>
+                            <div className="text-[11px] text-amber-800 truncate mt-0.5">
+                              📅 <strong>{b.session_date}</strong> • ⏰ {b.session_hour} WITA
+                            </div>
+                            <div className="text-[11px] text-gray-500 truncate">
+                              📍 {b.session_location}
+                            </div>
+                          </div>
+                          <a
+                            href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs flex items-center gap-1"
+                          >
+                            Chat WA
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative flex-1 sm:max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" /><input value={search} onChange={event => setSearch(event.target.value)} className="w-full rounded-xl bg-[var(--surface2)] py-2.5 pl-10 pr-4 text-sm outline-none focus:ring-1 focus:ring-[var(--gold)]" placeholder="Cari nama, kode, WhatsApp..." /></div>
               <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0"><FilterButton active={filter === 'all'} onClick={() => { setBookingPage(1); setFilter('all'); }}>Semua</FilterButton><FilterButton active={filter === 'needs_action'} onClick={() => { setBookingPage(1); setFilter('needs_action'); }}>Perlu diperiksa</FilterButton><FilterButton active={filter === 'confirmed'} onClick={() => { setBookingPage(1); setFilter('confirmed'); }}>Terverifikasi</FilterButton><FilterButton active={filter === 'completed'} onClick={() => { setBookingPage(1); setFilter('completed'); }}>Selesai</FilterButton><button onClick={() => loadBookings(true)} disabled={refreshing} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-bold disabled:opacity-50">{refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Muat ulang'}</button></div>
