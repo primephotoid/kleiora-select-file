@@ -531,6 +531,8 @@ func (h *Handler) ListBookings(c *fiber.Ctx) error {
 	default:
 		if status := strings.TrimSpace(c.Query("status")); status != "" {
 			query = query.Where("status = ?", status)
+		} else {
+			query = query.Where("status <> ?", "completed")
 		}
 	}
 
@@ -593,7 +595,18 @@ func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
 	if err := h.db.Model(&booking).Updates(map[string]any{"status": "completed", "payment_status": "verified"}).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Gagal memperbarui status booking")
 	}
-	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai", "booking": booking})
+
+	// Otomatis hapus galeri foto terkait agar tidak menumpuk
+	var galleries []models.Gallery
+	if err := h.db.Where("booking_id = ?", booking.ID).Find(&galleries).Error; err == nil {
+		for _, g := range galleries {
+			h.db.Where("gallery_id = ?", g.ID).Delete(&models.Selection{})
+			h.db.Where("gallery_id = ?", g.ID).Delete(&models.Photo{})
+			h.db.Unscoped().Where("id = ?", g.ID).Delete(&models.Gallery{})
+		}
+	}
+
+	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai dan galeri telah dibersihkan", "booking": booking})
 }
 
 func (h *Handler) RotateBookingAccessToken(c *fiber.Ctx) error {

@@ -448,7 +448,7 @@ export default function DashboardPage() {
     setProcessing(code); setError('');
     try {
       await apiRequest(`/studio/bookings/${code}/complete`, { method: 'PATCH', headers: authHeaders() });
-      await loadBookings(true);
+      await load(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui status booking.'); }
     finally { setProcessing(''); }
   }
