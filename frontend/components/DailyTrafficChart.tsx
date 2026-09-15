@@ -110,7 +110,7 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-emerald-600" />
                 <div>
-                  <div className="text-[10px] font-medium text-gray-500">Pengunjung Unik</div>
+                  <div className="text-[10px] font-medium text-gray-500">Pengunjung</div>
                   <div className="text-sm font-bold text-gray-900">{peakItem.unique_visits} klien</div>
                 </div>
               </div>
@@ -182,7 +182,7 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
           {(metric === 'visitors' || metric === 'both') && (
             <div className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-gradient-to-t from-emerald-600 to-emerald-400" />
-              <span>Pengunjung Unik</span>
+              <span>Pengunjung</span>
             </div>
           )}
         </div>
