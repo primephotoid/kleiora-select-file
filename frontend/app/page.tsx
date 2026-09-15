@@ -124,7 +124,7 @@ export default async function HomePage() {
                 <span className="font-serif text-5xl font-semibold tracking-tight text-white drop-shadow-lg sm:text-7xl">Kleiora<span className="text-[#eda98a]">.grads</span></span>
               </h1>
               <p className="mt-6 font-serif text-lg md:text-xl italic text-white drop-shadow-md">
-                Let's make your graduation moment unforgettable! ✨
+                Let&apos;s make your graduation moment unforgettable! ✨
               </p>
               <Link href="/booking" className="mt-8 inline-flex items-center gap-2 rounded-full bg-[var(--gold)] px-8 py-4 text-sm font-bold text-[var(--bg)] transition hover:opacity-90 shadow-xl">
                 Lihat Paket & Harga <ArrowRight className="h-4 w-4" />

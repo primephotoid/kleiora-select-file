@@ -586,7 +586,7 @@ export default function DashboardPage() {
                     <button onClick={() => deleteReview(r.id)} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-600 transition hover:bg-red-100"><Trash className="h-4 w-4" /></button>
                   </div>
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-gray-600">"{r.comment}"</p>
+                <p className="mt-4 text-sm leading-relaxed text-gray-600">&quot;{r.comment}&quot;</p>
                 <p className="mt-4 text-[10px] text-gray-400">{new Date(r.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
               </div>
             ))}

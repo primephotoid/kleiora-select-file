@@ -104,7 +104,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
                     <Star key={i} className={`h-4 w-4 ${i < r.rating ? 'fill-current' : 'text-gray-300'}`} />
                   ))}
                 </div>
-                <p className="mb-6 text-sm leading-relaxed text-gray-700">"{r.comment}"</p>
+                <p className="mb-6 text-sm leading-relaxed text-gray-700">&quot;{r.comment}&quot;</p>
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface2)] font-serif font-bold text-[var(--gold-dark)]">
                     {r.client_name.charAt(0).toUpperCase()}
