@@ -133,87 +133,6 @@ export default function DashboardPage() {
     );
   }, [bookings]);
 
-  function parseBookingTime(b: BookingItem) {
-    if (!b.session_date) return null;
-    const dateParts = b.session_date.split('-');
-    if (dateParts.length !== 3) return null;
-
-    const year = dateParts[0];
-    const month = dateParts[1].padStart(2, '0');
-    const day = dateParts[2].padStart(2, '0');
-
-    let hour = '09';
-    let min = '00';
-
-    if (b.session_hour) {
-      const parts = String(b.session_hour).trim().split(':');
-      const parsedH = parts[0].replace(/\D/g, '');
-      if (parsedH) hour = parsedH.padStart(2, '0');
-      if (parts.length > 1) {
-        const parsedM = parts[1].replace(/\D/g, '');
-        if (parsedM) min = parsedM.padStart(2, '0');
-      }
-    }
-
-    const startIso = `${year}${month}${day}T${hour}${min}00`;
-    const endH = String(Math.min(23, parseInt(hour, 10) + 2)).padStart(2, '0');
-    const endIso = `${year}${month}${day}T${endH}${min}00`;
-
-    return { year, month, day, hour, min, startIso, endIso };
-  }
-
-  function createGoogleCalendarUrl(b: BookingItem) {
-    const t = parseBookingTime(b);
-    if (!t) return '#';
-
-    const title = encodeURIComponent(`📸 SESI FOTO: ${b.full_name} (Hubungi FG!)`);
-    const details = encodeURIComponent(
-      `Kode Booking: ${b.code}\nKlien: ${b.full_name}\nKampus: ${b.campus_name}\nWhatsApp: ${b.whatsapp}\nPaket: ${b.package?.name || ''}\n\n⚠️ PENTING: Hubungi & konfirmasi Fotografer (FG)!`
-    );
-    const location = encodeURIComponent(b.session_location || '');
-
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${t.startIso}/${t.endIso}&details=${details}&location=${location}`;
-  }
-
-  function downloadIcsFile(b: BookingItem) {
-    const t = parseBookingTime(b);
-    if (!t) return;
-
-    const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Kleiora Grads//ID',
-      'BEGIN:VEVENT',
-      `SUMMARY:📸 SESI FOTO: ${b.full_name} (Hubungi FG!)`,
-      `DESCRIPTION:Kode: ${b.code}\\nKlien: ${b.full_name}\\nWA: ${b.whatsapp}\\nPaket: ${b.package?.name || ''}\\nCatatan: PENTING Hubungi FG!`,
-      `LOCATION:${b.session_location || ''}`,
-      `DTSTART:${t.startIso}`,
-      `DTEND:${t.endIso}`,
-      'BEGIN:VALARM',
-      'TRIGGER:-PT1D',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:Pengingat Sesi Foto H-1 (Hubungi FG!)',
-      'END:VALARM',
-      'BEGIN:VALARM',
-      'TRIGGER:-PT2H',
-      'ACTION:DISPLAY',
-      'DESCRIPTION:Pengingat Sesi Foto (Hubungi FG!)',
-      'END:VALARM',
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].join('\r\n');
-
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Sesi-Foto-${b.code}.ics`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }
-
   async function loadBookings(background = true) {
     if (background) setRefreshing(true);
     setError('');
@@ -536,35 +455,14 @@ export default function DashboardPage() {
                               📍 {b.session_location}
                             </div>
                           </div>
-                          <div className="flex flex-col gap-1.5 shrink-0">
-                            <a
-                              href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs"
-                            >
-                              Chat WA Klien
-                            </a>
-                            <div className="flex gap-1">
-                              <a
-                                href={createGoogleCalendarUrl(b)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex flex-1 items-center justify-center rounded-lg bg-amber-600 px-2 py-1 text-[10px] font-bold text-white transition hover:bg-amber-700 shadow-2xs"
-                                title="Buka & Pasang Pengingat di Google Calendar"
-                              >
-                                📅 Google
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => downloadIcsFile(b)}
-                                className="inline-flex flex-1 items-center justify-center rounded-lg bg-amber-700 px-2 py-1 text-[10px] font-bold text-white transition hover:bg-amber-800 shadow-2xs"
-                                title="Unduh berkas .ics untuk Alarm/Kalender HP (iPhone/Android)"
-                              >
-                                ⏰ .ics HP
-                              </button>
-                            </div>
-                          </div>
+                          <a
+                            href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs flex items-center gap-1"
+                          >
+                            Chat WA Klien
+                          </a>
                         </div>
                       ))}
                     </div>
