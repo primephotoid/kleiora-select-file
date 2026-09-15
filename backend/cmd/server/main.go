@@ -272,6 +272,7 @@ func main() {
 	api.Post("/analytics/track", h.TrackEvent)
 
 	studio := api.Group("/studio", h.AdminRequired)
+	studio.Get("/events", h.StreamEvents)
 	studio.Get("/bookings", h.ListBookings)
 	studio.Post("/bookings/:code/access-token", h.RotateBookingAccessToken)
 	studio.Patch("/bookings/:code/verify-payment", h.VerifyBookingPayment)

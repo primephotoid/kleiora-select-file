@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -47,14 +48,59 @@ var (
 	bookingCreateMu        sync.Mutex
 )
 
+type EventBroadcaster struct {
+	mu      sync.RWMutex
+	clients map[chan string]bool
+}
+
+func NewEventBroadcaster() *EventBroadcaster {
+	return &EventBroadcaster{
+		clients: make(map[chan string]bool),
+	}
+}
+
+func (eb *EventBroadcaster) Subscribe() chan string {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	ch := make(chan string, 10)
+	eb.clients[ch] = true
+	return ch
+}
+
+func (eb *EventBroadcaster) Unsubscribe(ch chan string) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	if _, ok := eb.clients[ch]; ok {
+		delete(eb.clients, ch)
+		close(ch)
+	}
+}
+
+func (eb *EventBroadcaster) Broadcast(event string) {
+	eb.mu.RLock()
+	defer eb.mu.RUnlock()
+	for ch := range eb.clients {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
+}
+
 type Handler struct {
 	db           *gorm.DB
 	cfg          *config.Config
 	driveService *services.DriveService
+	events       *EventBroadcaster
 }
 
 func NewHandler(db *gorm.DB, cfg *config.Config, driveService *services.DriveService) *Handler {
-	return &Handler{db: db, cfg: cfg, driveService: driveService}
+	return &Handler{
+		db:           db,
+		cfg:          cfg,
+		driveService: driveService,
+		events:       NewEventBroadcaster(),
+	}
 }
 
 func randomToken(bytes int) (string, error) {
@@ -414,7 +460,66 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to create booking")
 	}
 	h.db.Preload("Package").First(&booking, booking.ID)
+	h.events.Broadcast("booking_created")
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking, "access_token": accessToken})
+}
+
+func (h *Handler) StreamEvents(c *fiber.Ctx) error {
+	tokenStr := c.Query("token")
+	if tokenStr == "" {
+		authHeader := c.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
+	if tokenStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(h.cfg.JWTSecret), nil
+	})
+	if err != nil || !token.Valid {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		ch := h.events.Subscribe()
+		defer h.events.Unsubscribe(ch)
+
+		fmt.Fprintf(w, "event: connected\ndata: {}\n\n")
+		w.Flush()
+
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case msg, ok := <-ch:
+				if !ok {
+					return
+				}
+				fmt.Fprintf(w, "event: update\ndata: {\"type\":\"%s\"}\n\n", msg)
+				if err := w.Flush(); err != nil {
+					return
+				}
+			case <-ticker.C:
+				fmt.Fprintf(w, ":ping\n\n")
+				if err := w.Flush(); err != nil {
+					return
+				}
+			}
+		}
+	})
+
+	return nil
 }
 
 func (h *Handler) GetBooking(c *fiber.Ctx) error {
@@ -606,6 +711,7 @@ func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
 		}
 	}
 
+	h.events.Broadcast("booking_updated")
 	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai dan galeri telah dibersihkan", "booking": booking})
 }
 
@@ -643,6 +749,7 @@ func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
 	if result.RowsAffected != 1 {
 		return apiError(c, fiber.StatusConflict, "Payment proof changed; open the latest proof and verify again")
 	}
+	h.events.Broadcast("booking_updated")
 	return c.JSON(fiber.Map{"message": "Payment verified and booking confirmed"})
 }
 

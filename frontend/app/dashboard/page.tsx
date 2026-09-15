@@ -181,6 +181,35 @@ export default function DashboardPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const token = localStorage.getItem('kleiora_token');
+    if (!token) return;
+
+    const sseUrl = `${API_BASE_URL}/studio/events?token=${encodeURIComponent(token)}`;
+    let eventSource: EventSource | null = null;
+
+    try {
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.addEventListener('update', () => {
+        loadBookings(true);
+      });
+    } catch {
+      /* abaikan error koneksi sse */
+    }
+
+    const autoRefreshTimer = setInterval(() => {
+      loadBookings(true);
+    }, 20000);
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      clearInterval(autoRefreshTimer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       setBookingPage(1);
       setDebouncedSearch(search.trim());
