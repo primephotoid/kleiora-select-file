@@ -141,10 +141,17 @@ export interface PathCount {
   count: number;
 }
 
+export interface DailyTraffic {
+  date: string;
+  total_views: number;
+  unique_visits: number;
+}
+
 export interface AnalyticsSummary {
   total_views: number;
   unique_visits: number;
   views_by_path: PathCount[];
+  daily_traffic?: DailyTraffic[];
   recent_history: any[]; // Adjust type if needed
 }
 

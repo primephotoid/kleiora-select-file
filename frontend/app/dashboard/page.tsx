@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
 import { VideoTrimmer } from '@/components/VideoTrimmer';
+import { DailyTrafficChart } from '@/components/DailyTrafficChart';
 import imageCompression from 'browser-image-compression';
 
 interface GalleryItem {
@@ -480,6 +481,10 @@ export default function DashboardPage() {
               <Stat icon={<ReceiptText />} label="Klien (Booking)" value={stats.total} />
               <Stat icon={<CheckCircle2 />} label="Konversi (%)" value={analytics?.unique_visits ? Math.round((stats.total / (analytics.unique_visits || 1)) * 100) : 0} />
             </div>
+
+            {/* Daily Access Date Traffic Graph */}
+            <DailyTrafficChart data={analytics?.daily_traffic} />
+
             <div className="rounded-2xl border border-[var(--line)] bg-white p-5">
               <h3 className="mb-4 font-bold">Halaman Terpopuler</h3>
               <div className="space-y-3">

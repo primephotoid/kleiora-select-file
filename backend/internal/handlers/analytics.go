@@ -39,12 +39,19 @@ type AnalyticsSummaryResponse struct {
 	TotalViews    int64               `json:"total_views"`
 	UniqueVisits  int64               `json:"unique_visits"`
 	ViewsByPath   []PathCount         `json:"views_by_path"`
+	DailyTraffic  []DailyTraffic      `json:"daily_traffic"`
 	RecentHistory []models.VisitorLog `json:"recent_history"`
 }
 
 type PathCount struct {
 	Path  string `json:"path"`
 	Count int64  `json:"count"`
+}
+
+type DailyTraffic struct {
+	Date         string `json:"date"`
+	TotalViews   int64  `json:"total_views"`
+	UniqueVisits int64  `json:"unique_visits"`
 }
 
 func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
@@ -61,6 +68,14 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 		Order("count desc").
 		Find(&viewsByPath)
 
+	var dailyTraffic []DailyTraffic
+	h.db.Model(&models.VisitorLog{}).
+		Select("DATE(created_at) as date, count(id) as total_views, count(distinct session_id) as unique_visits").
+		Group("DATE(created_at)").
+		Order("date asc").
+		Limit(30).
+		Find(&dailyTraffic)
+
 	var recentHistory []models.VisitorLog
 	h.db.Order("created_at desc").Limit(50).Find(&recentHistory)
 
@@ -68,6 +83,7 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 		TotalViews:    totalViews,
 		UniqueVisits:  uniqueVisits,
 		ViewsByPath:   viewsByPath,
+		DailyTraffic:  dailyTraffic,
 		RecentHistory: recentHistory,
 	})
 }
