@@ -159,9 +159,6 @@ export default async function HomePage() {
                 packages={packages}
                 subtitle="Pricelist foto wisuda"
                 title="Pilihan paket sesuai kebutuhanmu"
-                onSelectPackage={(code) => {
-                  window.location.href = `/booking?package=${code}`;
-                }}
               />
             </div>
           </section>
