@@ -661,11 +661,20 @@ func (h *Handler) ViewPaymentProof(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Bukti pembayaran tidak dapat dibuka")
 	}
-	if _, err := os.Stat(absolutePath); err != nil {
-		return apiError(c, fiber.StatusNotFound, "File bukti pembayaran tidak ditemukan")
+	// ReadFile opens, reads, and immediately closes the file — avoiding the
+	// Windows file-locking issue that c.SendFile() causes in tests.
+	data, err := os.ReadFile(absolutePath)
+	if err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Bukti pembayaran tidak dapat dibaca")
+	}
+	ext := strings.ToLower(filepath.Ext(absolutePath))
+	contentType := "image/jpeg"
+	if ext == ".png" {
+		contentType = "image/png"
 	}
 	c.Set(paymentProofVersionHeader, booking.PaymentProofVersion)
-	return c.SendFile(absolutePath)
+	c.Set("Content-Type", contentType)
+	return c.Send(data)
 }
 
 func (h *Handler) DemoParseDrive(c *fiber.Ctx) error {

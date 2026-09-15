@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -249,6 +250,10 @@ func TestBookingDetailsAndPaymentProofRequireAccessToken(t *testing.T) {
 		t.Fatalf("expected admin proof view to return 200, got %d", response.StatusCode)
 	}
 	proofVersion := response.Header.Get(paymentProofVersionHeader)
+	// Drain and close the body so the underlying file handle is released before
+	// t.Cleanup removes TempDir (required on Windows which locks open files).
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
 	if proofVersion == "" {
 		t.Fatal("expected proof view to return its version")
 	}
@@ -449,12 +454,16 @@ func TestListBookingsSupportsServerSidePaginationSearchFilterAndSort(t *testing.
 	if response.StatusCode != fiber.StatusOK || len(payload.Bookings) != 5 {
 		t.Fatalf("expected second page with 5 rows, got status %d and %d rows", response.StatusCode, len(payload.Bookings))
 	}
-	if payload.Bookings[0].Code != "KLR-TEST-006" || payload.Bookings[4].Code != "KLR-TEST-010" {
+	// Default "all" filter hides completed bookings (index 4, 8, 12 → KLR-TEST-004, KLR-TEST-008, KLR-TEST-012).
+	// 13 total − 3 completed = 10 visible; sorted by code ASC:
+	// page 1: 001,002,003,005,006 | page 2: 007,009,010,011,013
+	if payload.Bookings[0].Code != "KLR-TEST-007" || payload.Bookings[4].Code != "KLR-TEST-013" {
 		t.Fatalf("unexpected sorted page: %s ... %s", payload.Bookings[0].Code, payload.Bookings[4].Code)
 	}
-	if payload.Meta.Page != 2 || payload.Meta.PerPage != 5 || payload.Meta.Total != 13 || payload.Meta.TotalPages != 3 {
+	if payload.Meta.Page != 2 || payload.Meta.PerPage != 5 || payload.Meta.Total != 10 || payload.Meta.TotalPages != 2 {
 		t.Fatalf("unexpected pagination metadata: %+v", payload.Meta)
 	}
+	// Summary counts are always over all bookings regardless of the active filter.
 	if payload.Summary.Total != 13 || payload.Summary.NeedsAction != 3 || payload.Summary.Completed != 3 {
 		t.Fatalf("unexpected booking summary: %+v", payload.Summary)
 	}
