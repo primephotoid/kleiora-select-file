@@ -335,6 +335,16 @@ function BookingFlow() {
               </div>
             </aside>
             <form noValidate onSubmit={proceedToPayment} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 sm:p-8">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(1);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="mb-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--gold-dark)] hover:underline"
+              >
+                <ArrowLeft className="h-4 w-4" /> Kembali ke Pilih Paket
+              </button>
               <h2 className="font-serif text-3xl font-medium">Lengkapi data dirimu</h2><p className="mt-2 text-sm text-[var(--muted)]">Kami menggunakan data ini untuk mengatur jadwal dan menghubungimu.</p>
               <div className="mt-8 grid gap-5">
                 <Field label="Nama Lengkap" error={fieldErrors.full_name}><input required aria-invalid={Boolean(fieldErrors.full_name)} value={form.full_name} onChange={e => updateField('full_name', e.target.value)} className="field" placeholder="Nama lengkap" /></Field>
@@ -367,7 +377,26 @@ function BookingFlow() {
                 </div>
               </div>
               <div className="mt-5"><Field label="Catatan (opsional)"><textarea rows={3} value={form.notes} onChange={e => setForm({...form, notes:e.target.value})} className="field resize-none" placeholder="Informasi tambahan untuk tim kami" /></Field></div>
-              <button disabled={submitting} className="btn-primary mt-8 w-full px-7 py-4 disabled:opacity-50">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ''} Lanjut ke Pembayaran &rarr;</button>
+              <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  disabled={submitting}
+                  className="btn-secondary w-full px-7 py-4 sm:w-auto"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Kembali
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="btn-primary w-full flex-1 px-7 py-4 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ''} Lanjut ke Pembayaran &rarr;
+                </button>
+              </div>
             </form>
           </div>
         )}
