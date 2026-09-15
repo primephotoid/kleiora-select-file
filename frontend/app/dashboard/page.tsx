@@ -133,6 +133,32 @@ export default function DashboardPage() {
     );
   }, [bookings]);
 
+  function createGoogleCalendarUrl(b: BookingItem) {
+    if (!b.session_date || !b.session_hour) return '#';
+    const dateParts = b.session_date.split('-');
+    const hourParts = b.session_hour.split(':');
+
+    if (dateParts.length !== 3 || hourParts.length < 2) return '#';
+
+    const year = dateParts[0];
+    const month = dateParts[1];
+    const day = dateParts[2];
+    const hour = hourParts[0].padStart(2, '0');
+    const min = hourParts[1].padStart(2, '0');
+
+    const startIso = `${year}${month}${day}T${hour}${min}00`;
+    const endHourNum = Math.min(23, parseInt(hour, 10) + 2);
+    const endIso = `${year}${month}${day}T${String(endHourNum).padStart(2, '0')}${min}00`;
+
+    const title = encodeURIComponent(`📸 SESI FOTO: ${b.full_name} (Hubungi FG!)`);
+    const details = encodeURIComponent(
+      `Kode Booking: ${b.code}\nKlien: ${b.full_name}\nKampus: ${b.campus_name}\nWhatsApp: ${b.whatsapp}\nPaket: ${b.package?.name || ''}\n\n⚠️ PENTING: Hubungi & konfirmasi Fotografer (FG)!`
+    );
+    const location = encodeURIComponent(b.session_location || '');
+
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startIso}/${endIso}&details=${details}&location=${location}`;
+  }
+
   async function loadBookings(background = true) {
     if (background) setRefreshing(true);
     setError('');
@@ -455,14 +481,25 @@ export default function DashboardPage() {
                               📍 {b.session_location}
                             </div>
                           </div>
-                          <a
-                            href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs flex items-center gap-1"
-                          >
-                            Chat WA
-                          </a>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            <a
+                              href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs"
+                            >
+                              Chat WA
+                            </a>
+                            <a
+                              href={createGoogleCalendarUrl(b)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center justify-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white transition hover:bg-amber-700 shadow-2xs"
+                              title="Tambah Pengingat / Alarm ke Kalender HP"
+                            >
+                              ⏰ Alarm HP
+                            </a>
+                          </div>
                         </div>
                       ))}
                     </div>
