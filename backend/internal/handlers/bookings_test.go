@@ -20,7 +20,7 @@ import (
 	"kleiora-backend/internal/services"
 
 	"github.com/gofiber/fiber/v2"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
