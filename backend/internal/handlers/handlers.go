@@ -956,14 +956,15 @@ func (h *Handler) MarkGallerySent(c *fiber.Ctx) error {
 	if err := h.db.Where("slug = ?", c.Params("slug")).First(&gallery).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Galeri tidak ditemukan")
 	}
-	if gallery.GallerySentAt != nil {
-		return apiError(c, fiber.StatusConflict, "Galeri sudah pernah dikirim ke klien")
-	}
 	now := time.Now()
-	if err := h.db.Model(&gallery).Update("gallery_sent_at", now).Error; err != nil {
+	updates := map[string]interface{}{
+		"gallery_sent_at": now,
+		"status":          "active",
+	}
+	if err := h.db.Model(&gallery).Updates(updates).Error; err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Gagal menandai galeri sebagai terkirim")
 	}
-	return c.JSON(fiber.Map{"message": "Galeri ditandai terkirim", "gallery_sent_at": now})
+	return c.JSON(fiber.Map{"message": "Galeri ditandai terkirim", "gallery_sent_at": now, "status": "active"})
 }
 
 func (h *Handler) DeleteBooking(c *fiber.Ctx) error {

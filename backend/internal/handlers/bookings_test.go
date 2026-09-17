@@ -615,8 +615,12 @@ func TestMarkGallerySent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp2.StatusCode != http.StatusConflict {
-		t.Fatalf("expected 409 Conflict on second send attempt, got %d", resp2.StatusCode)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK on re-sending, got %d", resp2.StatusCode)
+	}
+	db.Where("slug = ?", "test-gallery-sent-slug").First(&updated)
+	if updated.Status != "active" {
+		t.Fatalf("expected status to be active after re-sending, got %s", updated.Status)
 	}
 }
 

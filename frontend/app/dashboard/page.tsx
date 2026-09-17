@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   CalendarDays, Check, CheckCircle2, Clock3, Copy, ExternalLink, ImageIcon,
-  Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, Search,
+  Images, Loader2, LogOut, MapPin, MessageCircle, Plus, ReceiptText, RotateCcw, Search,
   ShieldCheck, Trash, UserRound, WalletCards, X, PackageIcon, Edit2, UploadCloud, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary, reorderPackages } from '@/lib/api';
@@ -304,17 +304,33 @@ export default function DashboardPage() {
         method: 'PATCH',
         headers: authHeaders(),
       });
+      const nowIso = new Date().toISOString();
       setBookings(prev => prev.map(b => {
         if (b.id === item.id && b.gallery) {
           return {
             ...b,
-            gallery: { ...b.gallery, gallery_sent_at: new Date().toISOString() }
+            gallery: { ...b.gallery, status: 'active', gallery_sent_at: nowIso }
           };
         }
         return b;
       }));
+      setGalleries(prev => prev.map(g => g.slug === item.gallery?.slug ? { ...g, status: 'active', gallery_sent_at: nowIso } : g));
     } catch (err) {
       console.error('Failed to mark gallery sent:', err);
+    }
+  }
+
+  async function reopenGallery(slug: string) {
+    try {
+      await apiRequest(`/studio/galleries/${encodeURIComponent(slug)}/mark-sent`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+      });
+      const nowIso = new Date().toISOString();
+      setGalleries(prev => prev.map(g => g.slug === slug ? { ...g, status: 'active', gallery_sent_at: nowIso } : g));
+      setBookings(prev => prev.map(b => b.gallery?.slug === slug ? { ...b, gallery: { ...b.gallery, status: 'active', gallery_sent_at: nowIso } } : b));
+    } catch (err) {
+      console.error('Failed to reopen gallery access:', err);
     }
   }
 
@@ -542,7 +558,7 @@ export default function DashboardPage() {
             />
           </section>
         ) : tab === 'galleries' ? (
-          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryVisible).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} />)}{!galleries.filter(isGalleryVisible).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
+          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{galleries.filter(isGalleryVisible).map(gallery => <GalleryCard key={gallery.id} gallery={gallery} copied={copied === gallery.slug} onCopy={() => copyLink(gallery.slug)} onDelete={() => deleteGallery(gallery.id)} onReopen={() => reopenGallery(gallery.slug)} />)}{!galleries.filter(isGalleryVisible).length && <div className="sm:col-span-2 lg:col-span-3"><Empty icon={<ImageIcon />} title="Belum ada galeri" text="Buat galeri dari booking yang sudah dikonfirmasi." /></div>}</section>
         ) : tab === 'packages' ? (
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {packages.map((pkg, i) => (
@@ -774,17 +790,25 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
             </div></div></article>;
 }
 
-function GalleryCard({ gallery, copied, onCopy, onDelete }: { gallery: GalleryItem; copied: boolean; onCopy: () => void; onDelete: () => void }) {
+function GalleryCard({ gallery, copied, onCopy, onDelete, onReopen }: { gallery: GalleryItem; copied: boolean; onCopy: () => void; onDelete: () => void; onReopen?: () => void }) {
   const count = gallery.photos?.length || 0;
   const selected = gallery.selection?.total_selected || 0;
   const photo = gallery.photos?.[0];
+  const isSubmitted = gallery.status === 'submitted';
   return (<article className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-white">
     <button onClick={onDelete} className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-red-600 shadow-sm backdrop-blur transition hover:bg-red-50 hover:text-red-700" aria-label="Hapus galeri"><Trash className="h-4 w-4" /></button>
     <div className="flex h-28 items-center justify-center overflow-hidden bg-[var(--surface2)]">{photo ? <img src={`https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.drive_file_id)}=w600`} alt="Thumbnail" className="h-full w-full object-cover" /> : <Images className="h-8 w-8 text-[var(--gold-dark)]" />}</div>
     <div className="p-5">
-      <div className="flex items-start justify-between gap-3"><div><Status value={gallery.status === 'submitted' ? 'selection_submitted' : gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div>
+      <div className="flex items-start justify-between gap-3"><div><Status value={isSubmitted ? 'selection_submitted' : gallery.status} /><h2 className="mt-3 font-serif text-2xl font-semibold leading-tight">{gallery.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{gallery.client_name || 'Tanpa nama klien'}</p></div><span className="shrink-0 rounded-full bg-[var(--surface2)] px-3 py-1 text-xs font-bold">{count} foto</span></div>
       <div className="mt-5"><div className="mb-2 flex justify-between text-xs"><span className="text-[var(--muted)]">Pilihan klien</span><strong>{selected} / {gallery.max_selection || '∞'}</strong></div><div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface2)]"><div className="h-full rounded-full bg-[var(--gold)]" style={{ width: `${gallery.max_selection ? Math.min(100, selected / gallery.max_selection * 100) : 0}%` }} /></div></div>
-      <div className="mt-5 flex gap-2"><Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link><button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button></div>
+      <div className="mt-5 flex gap-2">
+        <Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link>
+        {isSubmitted && onReopen ? (
+          <button onClick={onReopen} className="btn-secondary flex-1 px-3 py-2.5 text-xs border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100" title="Buka kembali akses galeri 1x pakai untuk klien"><RotateCcw className="h-3.5 w-3.5" />Buka Akses</button>
+        ) : (
+          <button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button>
+        )}
+      </div>
     </div>
   </article>);
 }
