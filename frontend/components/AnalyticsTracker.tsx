@@ -21,8 +21,8 @@ export function AnalyticsTracker() {
       localStorage.setItem('kleiora_session_id', sessionId);
     }
 
-    // Ignore admin routes
-    if (pathname?.startsWith('/dashboard') || pathname?.startsWith('/login')) {
+    // Ignore admin and gallery routes
+    if (pathname?.startsWith('/dashboard') || pathname?.startsWith('/login') || pathname?.startsWith('/studio') || pathname?.startsWith('/g')) {
       return;
     }
 

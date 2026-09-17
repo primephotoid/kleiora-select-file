@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"kleiora-backend/internal/models"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,6 +18,10 @@ func (h *Handler) TrackEvent(c *fiber.Ctx) error {
 	var req TrackEventRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if strings.HasPrefix(req.Path, "/g") || strings.HasPrefix(req.Path, "/dashboard") || strings.HasPrefix(req.Path, "/login") || strings.HasPrefix(req.Path, "/studio") {
+		return c.JSON(fiber.Map{"status": "ignored"})
 	}
 
 	if req.Action == "" {
@@ -58,11 +64,14 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 	var totalViews int64
 	var uniqueVisits int64
 
-	h.db.Model(&models.VisitorLog{}).Count(&totalViews)
-	h.db.Model(&models.VisitorLog{}).Distinct("session_id").Count(&uniqueVisits)
+	filterQuery := "path NOT LIKE '/g%' AND path NOT LIKE '/dashboard%' AND path NOT LIKE '/studio%' AND path NOT LIKE '/login%'"
+
+	h.db.Model(&models.VisitorLog{}).Where(filterQuery).Count(&totalViews)
+	h.db.Model(&models.VisitorLog{}).Where(filterQuery).Distinct("session_id").Count(&uniqueVisits)
 
 	var viewsByPath []PathCount
 	h.db.Model(&models.VisitorLog{}).
+		Where(filterQuery).
 		Select("path, count(id) as count").
 		Group("path").
 		Order("count desc").
@@ -70,6 +79,7 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 
 	var dailyTraffic []DailyTraffic
 	h.db.Model(&models.VisitorLog{}).
+		Where(filterQuery).
 		Select("DATE(created_at) as date, count(id) as total_views, count(distinct session_id) as unique_visits").
 		Group("DATE(created_at)").
 		Order("date asc").
@@ -77,7 +87,7 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 		Find(&dailyTraffic)
 
 	var recentHistory []models.VisitorLog
-	h.db.Order("created_at desc").Limit(50).Find(&recentHistory)
+	h.db.Where(filterQuery).Order("created_at desc").Limit(50).Find(&recentHistory)
 
 	return c.JSON(AnalyticsSummaryResponse{
 		TotalViews:    totalViews,

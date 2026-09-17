@@ -252,7 +252,7 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
         ) : gallery.status === 'submitted' ? (
           <section className="mx-auto max-w-2xl rounded-3xl border border-[var(--line)] bg-[var(--surface)] p-7 text-center shadow-sm sm:p-10">
             <Lock className="mx-auto h-14 w-14 text-[var(--gold-dark)]" />
-            <p className="mt-5 text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Akses Terkunci (1x Pakai)</p>
+            <p className="mt-5 text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Akses Terkunci</p>
             <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Pilihan Foto Sudah Dikirim</h2>
             <p className="mx-auto mt-4 max-w-lg text-sm leading-6 text-[var(--muted)]">
               Link galeri ini sudah tidak aktif karena pilihan foto telah berhasil dikirim ke studio sebelumnya.
@@ -364,7 +364,7 @@ export default function GalleryClientPage({ params }: { params: { slug: string }
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6">
             <h2 className="font-serif text-2xl">Konfirmasi pilihan</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">Kamu memilih {selectedIds.length} foto. Setelah dikirim, link galeri akan terkunci (1x pakai).</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">Kamu memilih {selectedIds.length} foto. Setelah dikirim, link galeri akan terkunci.</p>
             <label className="mt-5 block text-xs font-bold">Catatan untuk editor</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="mt-2 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--bg)] p-3 text-sm outline-none focus:border-[var(--gold)]" placeholder="Contoh: tone hangat, hapus objek di belakang..." />
             <div className="mt-6 flex justify-end gap-3">

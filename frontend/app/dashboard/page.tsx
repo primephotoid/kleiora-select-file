@@ -804,7 +804,7 @@ function GalleryCard({ gallery, copied, onCopy, onDelete, onReopen }: { gallery:
       <div className="mt-5 flex gap-2">
         <Link href={`/g/${gallery.slug}`} target="_blank" className="btn-secondary flex-1 px-3 py-2.5 text-xs"><ExternalLink className="h-3.5 w-3.5" />Lihat</Link>
         {isSubmitted && onReopen ? (
-          <button onClick={onReopen} className="btn-secondary flex-1 px-3 py-2.5 text-xs border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100" title="Buka kembali akses galeri 1x pakai untuk klien"><RotateCcw className="h-3.5 w-3.5" />Buka Akses</button>
+          <button onClick={onReopen} className="btn-secondary flex-1 px-3 py-2.5 text-xs border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100" title="Buka kembali akses galeri untuk klien"><RotateCcw className="h-3.5 w-3.5" />Buka Akses</button>
         ) : (
           <button onClick={onCopy} className="btn-primary flex-1 px-3 py-2.5 text-xs">{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Tersalin' : 'Salin link'}</button>
         )}
