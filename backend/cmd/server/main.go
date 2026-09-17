@@ -229,7 +229,23 @@ func main() {
 	})
 	app.Use(recover.New())
 	app.Use(logger.New())
-	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin, AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS", AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Booking-Token, X-Payment-Proof-Version", ExposeHeaders: "X-Payment-Proof-Version", AllowCredentials: true}))
+	app.Use(cors.New(cors.Config{
+		AllowOriginsFunc: func(origin string) bool {
+			if cfg.Environment == "development" {
+				return true
+			}
+			for _, allowed := range strings.Split(cfg.FrontendOrigin, ",") {
+				if strings.TrimSpace(allowed) == origin {
+					return true
+				}
+			}
+			return false
+		},
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Booking-Token, X-Payment-Proof-Version",
+		ExposeHeaders:    "X-Payment-Proof-Version",
+		AllowCredentials: true,
+	}))
 	app.Use(limiter.New(limiter.Config{Max: 120, Expiration: time.Minute, LimitReached: func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "Too many requests"})
 	}}))
