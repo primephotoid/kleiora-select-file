@@ -3,10 +3,23 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Menu, MessageCircle, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleScroll = () => {
+      setOpen(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [open]);
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[color:var(--surface-glass)] backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
