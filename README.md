@@ -96,4 +96,23 @@ Hasil dump tersimpan di `backend/database/dumps/kleiora-YYYYMMDD-HHMMSS.sql`. Fi
 
 ## Catatan pembayaran
 
-Versi ini tidak membuat QRIS atau Virtual Account palsu. Booking dibuat dengan status `pending_payment`; pelanggan dapat mengunggah bukti JPG/PNG dan admin memverifikasinya dari dashboard. Integrasi payment gateway dapat ditambahkan sebagai tahap tersendiri.
+Pembayaran baru menggunakan **QRIS direct Midtrans Core API saja**. Pelanggan memilih pembayaran penuh/DP, membuat QRIS, lalu dapat mengunduh PNG untuk dipindai dari aplikasi bank/e-wallet. Tidak ada upload bukti pembayaran untuk booking baru. Bukti manual lama masih dapat dilihat dan diverifikasi admin.
+
+Konfigurasi backend/server (jangan simpan server key di frontend atau Git):
+
+```env
+MIDTRANS_SERVER_KEY=<server-key-dari-dashboard-midtrans>
+MIDTRANS_IS_PRODUCTION=false
+MIDTRANS_BASE_URL=https://api.sandbox.midtrans.com
+MIDTRANS_NOTIFICATION_URL=https://kleioragrads.com/api/v1/payments/midtrans-notification
+```
+
+Untuk production, gunakan key production, `MIDTRANS_IS_PRODUCTION=true`, dan `MIDTRANS_BASE_URL=https://api.midtrans.com`. `MIDTRANS_CLIENT_KEY` tidak diperlukan untuk alur Core API ini. Endpoint webhook harus dapat diakses publik melalui HTTPS; proxy `/api/v1` ke backend (port host 3056). Atur Payment Notification URL yang sama di dashboard Midtrans. Charge juga mengirim `X-Override-Notification`. URL lama `/api/payments/midtrans-notification` tetap diterima backend sebagai kompatibilitas, tetapi proxy mungkin hanya meneruskan `/api/v1`; gunakan URL baru di server.
+
+Reservasi berlaku 30 menit sejak booking dibuat, bukan sejak halaman dibuka. Retry memakai request/order yang sama. Slot yang kedaluwarsa dibebaskan tanpa menghapus transaksi. Webhook memerlukan signature SHA-512 serta pemeriksaan Get Status langsung; order, transaksi, nominal IDR, dan metode QRIS harus cocok. Status `settlement` saja yang mengonfirmasi pembayaran. DP diterima tidak berarti seluruh harga paket lunas. Penyelesaian sesi tidak mengubah status pembayaran.
+
+Pembayaran yang dikonfirmasi setelah reservasi dilepas masuk `payment_review`; admin harus memeriksa ketersediaan jadwal atau melakukan refund melalui Midtrans. Jangan meminta pelanggan membayar ulang. Refund tercatat sebagai `refunded`. Riwayat booking QRIS tidak dapat dihapus melalui dashboard/API. Notifikasi pembayaran disimpan secara transaksional dan dikirim oleh worker; kegagalan Telegram dicoba lagi. Satu event pembayaran tidak membuat antrean ganda, tetapi pengiriman Telegram bersifat at-least-once (crash setelah Telegram menerima pesan sebelum commit bisa mengulang pengiriman).
+
+Worker memeriksa pending/recently-expired orders sebagai fallback webhook. Jika webhook tidak tersedia lebih lama, rekonsiliasi operasional melalui dashboard Midtrans diperlukan. Perubahan skema bersifat tambahan dan dijalankan lewat AutoMigrate saat backend dimulai; backup database sebelum deploy. Mengubah env Docker memerlukan pembuatan ulang container, bukan hanya restart.
+
+Sebelum production, uji sandbox: QR tampil/PNG bisa diunduh, nominal penuh/DP sesuai, webhook palsu dan nominal salah ditolak, retry tidak membuat order baru, settlement berulang tidak menggandakan event, pending/expired tidak menjadi paid, serta pembayaran terlambat masuk pemeriksaan admin. Tes otomatis memakai provider tiruan dan database SQLite sementara, tidak membaca `.env` atau membuat transaksi nyata.

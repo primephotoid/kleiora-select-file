@@ -127,6 +127,18 @@ jobs:
               echo "TELEGRAM_CHAT_ID is missing or empty in /opt/kleiora/.env" >&2
               exit 1
             }
+            grep -Eq '^MIDTRANS_SERVER_KEY=.+$' /opt/kleiora/.env || {
+              echo "MIDTRANS_SERVER_KEY is missing or empty in /opt/kleiora/.env" >&2
+              exit 1
+            }
+            grep -Eq '^MIDTRANS_IS_PRODUCTION=(true|false)$' /opt/kleiora/.env || {
+              echo "MIDTRANS_IS_PRODUCTION must be true or false in /opt/kleiora/.env" >&2
+              exit 1
+            }
+            grep -Eq '^MIDTRANS_NOTIFICATION_URL=https://.+/api/v1/payments/midtrans-notification$' /opt/kleiora/.env || {
+              echo "Set MIDTRANS_NOTIFICATION_URL to the public HTTPS /api/v1/payments/midtrans-notification endpoint" >&2
+              exit 1
+            }
 
             echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 

@@ -14,6 +14,37 @@ import (
 	"kleiora-backend/internal/models"
 )
 
+func FormatPaymentAmount(amount int64) string { return formatRupiah(amount) }
+
+func SendPaymentNotice(message string) error {
+	botToken, chatID := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")), strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+	if botToken == "" || chatID == "" {
+		return fmt.Errorf("Telegram credentials not configured")
+	}
+	payload, err := json.Marshal(map[string]string{"chat_id": chatID, "text": message})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+botToken+"/sendMessage", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	// Do not log a transport error containing the credential-bearing request URL.
+	if err != nil {
+		return fmt.Errorf("Telegram delivery unavailable")
+	}
+	defer resp.Body.Close()
+	var result struct {
+		OK bool `json:"ok"`
+	}
+	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&result) != nil || !result.OK {
+		return fmt.Errorf("Telegram rejected payment notification")
+	}
+	return nil
+}
+
 // SendTelegramBookingNotification sends an alert to the Admin's Telegram when a new booking is created.
 func SendTelegramBookingNotification(booking models.Booking, packageName string) {
 	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))

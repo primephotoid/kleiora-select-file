@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -92,6 +93,7 @@ type Handler struct {
 	cfg          *config.Config
 	driveService *services.DriveService
 	events       *EventBroadcaster
+	midtrans     *services.Midtrans
 }
 
 func NewHandler(db *gorm.DB, cfg *config.Config, driveService *services.DriveService) *Handler {
@@ -100,6 +102,7 @@ func NewHandler(db *gorm.DB, cfg *config.Config, driveService *services.DriveSer
 		cfg:          cfg,
 		driveService: driveService,
 		events:       NewEventBroadcaster(),
+		midtrans:     services.NewMidtrans(cfg),
 	}
 }
 
@@ -350,7 +353,9 @@ func (h *Handler) GetAvailability(c *fiber.Ctx) error {
 	for hour := 6; hour <= 19; hour++ {
 		hourValue := fmt.Sprintf("%02d", hour)
 		var count int64
-		h.db.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", date, hourValue, "cancelled").Count(&count)
+		if err := occupiedBookings(h.db, date, hourValue).Count(&count).Error; err != nil {
+			return apiError(c, fiber.StatusInternalServerError, "Failed to load availability")
+		}
 		remaining := slotCapacity - count
 		if remaining < 0 {
 			remaining = 0
@@ -396,6 +401,20 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to secure booking access")
 	}
+	var requestID *string
+	if req.RequestID != "" {
+		if len(req.RequestID) != 64 {
+			return apiError(c, 400, "Invalid booking request ID")
+		}
+		if _, err := hex.DecodeString(req.RequestID); err != nil {
+			return apiError(c, 400, "Invalid booking request ID")
+		}
+		hash := bookingTokenHash(req.RequestID)
+		requestID = &hash
+		mac := hmac.New(sha256.New, []byte(h.cfg.JWTSecret))
+		mac.Write([]byte("booking-request:" + req.RequestID))
+		accessToken = hex.EncodeToString(mac.Sum(nil))
+	}
 	amount := pkg.Price
 	if req.PaymentType == "dp" {
 		amount /= 2
@@ -408,13 +427,33 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		}
 		amount = req.CustomDPAmount
 	}
-	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
+	if amount <= 0 {
+		return apiError(c, fiber.StatusBadRequest, "Nominal pembayaran harus lebih dari nol")
+	}
+	expiresAt := time.Now().Add(30 * time.Minute)
+	orderID := "KLR-" + bookingTokenHash("midtrans-order:" + accessToken)[:32]
+	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentMethod: "qris", PaymentOrderID: &orderID, PaymentExpiresAt: &expiresAt, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
 	bookingCreateMu.Lock()
+	booking.RequestID = requestID
 	defer bookingCreateMu.Unlock()
 	persistBooking := func(db *gorm.DB) error {
 		return db.Transaction(func(tx *gorm.DB) error {
+			if requestID != nil {
+				var existing models.Booking
+				result := tx.Where("request_id = ?", *requestID).Limit(1).Find(&existing)
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected == 1 {
+					if existing.AccessTokenHash != booking.AccessTokenHash || existing.PackageID != booking.PackageID || existing.FullName != booking.FullName || existing.CampusName != booking.CampusName || existing.WhatsApp != booking.WhatsApp || existing.SessionDate != booking.SessionDate || existing.SessionHour != booking.SessionHour || existing.SessionLocation != booking.SessionLocation || existing.PaymentType != booking.PaymentType || existing.AmountDue != booking.AmountDue || existing.Notes != booking.Notes {
+						return fiber.NewError(409, "Permintaan booking sudah dipakai dengan data lain")
+					}
+					booking = existing
+					return nil
+				}
+			}
 			var count int64
-			if err := tx.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ? AND status <> ?", req.SessionDate, req.SessionHour, "cancelled").Count(&count).Error; err != nil {
+			if err := occupiedBookings(tx, req.SessionDate, req.SessionHour).Count(&count).Error; err != nil {
 				return err
 			}
 			if count >= slotCapacity {
@@ -451,6 +490,10 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		err = persistBooking(h.db)
 	}
 	if err != nil {
+		var httpError *fiber.Error
+		if errors.As(err, &httpError) {
+			return httpError
+		}
 		if errors.Is(err, errSlotFull) {
 			return apiError(c, fiber.StatusConflict, "Jadwal sesi yang dipilih sudah penuh")
 		}
@@ -541,6 +584,9 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	if !authorizeBookingAccess(c, &booking) {
 		return apiError(c, fiber.StatusUnauthorized, "Invalid booking access token")
 	}
+	if booking.PaymentOrderID != nil {
+		return apiError(c, fiber.StatusConflict, "Pembayaran QRIS diverifikasi otomatis; upload bukti tidak tersedia")
+	}
 	if booking.PaymentStatus == "verified" || booking.Status == "completed" {
 		return apiError(c, fiber.StatusConflict, "Payment for this booking is already finalized")
 	}
@@ -617,7 +663,7 @@ func (h *Handler) ListBookings(c *fiber.Ctx) error {
 	var summary bookingSummary
 	if err := h.db.Model(&models.Booking{}).Select(`
 		COUNT(*) AS total,
-		COALESCE(SUM(CASE WHEN payment_status = 'submitted' AND status <> 'completed' THEN 1 ELSE 0 END), 0) AS needs_action,
+		COALESCE(SUM(CASE WHEN payment_status IN ('submitted', 'payment_review', 'refunded') THEN 1 ELSE 0 END), 0) AS needs_action,
 		COALESCE(SUM(CASE WHEN (status = 'confirmed' OR payment_status = 'verified') AND status <> 'completed' THEN 1 ELSE 0 END), 0) AS confirmed,
 		COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) AS completed
 	`).Scan(&summary).Error; err != nil {
@@ -628,7 +674,7 @@ func (h *Handler) ListBookings(c *fiber.Ctx) error {
 	filter := strings.ToLower(strings.TrimSpace(c.Query("filter", "all")))
 	switch filter {
 	case "needs_action":
-		query = query.Where("payment_status = ? AND status <> ?", "submitted", "completed")
+		query = query.Where("payment_status IN ?", []string{"submitted", "payment_review", "refunded"})
 	case "confirmed":
 		query = query.Where("(status = ? OR payment_status = ?) AND status <> ?", "confirmed", "verified", "completed")
 	case "completed":
@@ -697,8 +743,15 @@ func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
 	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
 	}
-	if err := h.db.Model(&booking).Updates(map[string]any{"status": "completed", "payment_status": "verified"}).Error; err != nil {
+	if booking.PaymentStatus != "verified" {
+		return apiError(c, fiber.StatusConflict, "Pembayaran harus terverifikasi sebelum sesi diselesaikan")
+	}
+	result := h.db.Model(&booking).Where("payment_status = ?", "verified").Update("status", "completed")
+	if result.Error != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Gagal memperbarui status booking")
+	}
+	if result.RowsAffected != 1 {
+		return apiError(c, fiber.StatusConflict, "Status pembayaran berubah; muat ulang booking")
 	}
 
 	// Otomatis hapus galeri foto terkait agar tidak menumpuk
@@ -734,6 +787,9 @@ func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {
 		return apiError(c, fiber.StatusNotFound, "Booking not found")
+	}
+	if booking.PaymentOrderID != nil {
+		return apiError(c, fiber.StatusConflict, "Pembayaran QRIS hanya dapat diverifikasi oleh Midtrans")
 	}
 	proofVersion := strings.TrimSpace(c.Get(paymentProofVersionHeader))
 	if proofVersion == "" {
@@ -975,6 +1031,9 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
 	}
 
+	if booking.PaymentOrderID != nil {
+		return apiError(c, fiber.StatusConflict, "Riwayat transaksi QRIS tidak boleh dihapus; reservasi belum dibayar akan berakhir otomatis")
+	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		var galleryIDs []uint
 		if err := tx.Model(&models.Gallery{}).Where("booking_id = ?", booking.ID).Pluck("id", &galleryIDs).Error; err != nil {

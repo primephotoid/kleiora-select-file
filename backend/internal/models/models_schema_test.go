@@ -18,6 +18,7 @@ func TestPersistedStringsHaveExplicitDatabaseType(t *testing.T) {
 		Review{},
 		BookingSequence{},
 		Booking{},
+		PaymentNotice{},
 		Photo{},
 		Selection{},
 	}

@@ -176,6 +176,9 @@ func seedPackages(db *gorm.DB) error {
 
 func main() {
 	cfg := config.LoadConfig()
+	if err := cfg.ValidateMidtrans(); err != nil {
+		log.Fatalf("Invalid Midtrans configuration: %v", err)
+	}
 	if cfg.Environment == "production" && strings.Contains(cfg.JWTSecret, "development-only") {
 		log.Fatal("JWT_SECRET must be configured in production")
 	}
@@ -197,7 +200,7 @@ func main() {
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatalf("Failed to ping MySQL: %v", err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}, &models.VisitorLog{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.PaymentNotice{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}, &models.Portfolio{}, &models.Review{}, &models.VisitorLog{}); err != nil {
 		log.Fatalf("Failed to run database migration: %v", err)
 	}
 	if err := migrateLegacyPaymentProofs(db, cfg); err != nil {
@@ -282,7 +285,12 @@ func main() {
 	api.Get("/availability", h.GetAvailability)
 	api.Post("/bookings", h.CreateBooking)
 	api.Get("/bookings/:code", h.GetBooking)
-	api.Post("/bookings/:code/payment-proof", h.UploadPaymentProof)
+	api.Post("/bookings/:code/qris", h.CreateQRIS)
+	api.Get("/bookings/:code/payment", h.GetPayment)
+	api.Get("/bookings/:code/qris.png", h.QRISImage)
+	api.Post("/payments/midtrans-notification", h.MidtransNotification)
+	// Compatibility for the original server environment; new deployments use /api/v1.
+	app.Post("/api/payments/midtrans-notification", h.MidtransNotification)
 	api.Get("/galleries/:slug", h.GetGalleryBySlug)
 	api.Post("/galleries/:slug/select", h.SubmitSelection)
 	api.Post("/analytics/track", h.TrackEvent)
@@ -321,6 +329,7 @@ func main() {
 
 	// Start background worker for FG photo session reminders (H-1)
 	startFGReminderWorker(db)
+	h.StartPaymentWorker()
 
 	log.Printf("Starting Kleiora Fiber API on port :%s", cfg.Port)
 	if err := app.Listen(fmt.Sprintf(":%s", cfg.Port)); err != nil {
@@ -344,7 +353,7 @@ func checkAndSendFGReminders(db *gorm.DB) {
 	todayStr := now.Format("2006-01-02")
 
 	var upcomingBookings []models.Booking
-	if err := db.Preload("Package").Where("(session_date = ? OR session_date = ?) AND status != 'cancelled' AND reminder_sent_at IS NULL", tomorrowStr, todayStr).Find(&upcomingBookings).Error; err != nil {
+	if err := db.Preload("Package").Where("(session_date = ? OR session_date = ?) AND status = 'confirmed' AND payment_status = 'verified' AND reminder_sent_at IS NULL", tomorrowStr, todayStr).Find(&upcomingBookings).Error; err != nil {
 		log.Printf("[FG Reminder Worker] Error fetching upcoming bookings: %v\n", err)
 		return
 	}

@@ -80,30 +80,47 @@ type BookingSequence struct {
 }
 
 type Booking struct {
-	ID                  uint       `gorm:"primaryKey" json:"id"`
-	Code                string     `gorm:"size:191;uniqueIndex;not null" json:"code"`
-	PackageID           uint       `gorm:"not null;index" json:"package_id"`
-	Package             Package    `json:"package"`
-	FullName            string     `gorm:"size:191;not null" json:"full_name"`
-	CampusName          string     `gorm:"size:191;not null" json:"campus_name"`
-	WhatsApp            string     `gorm:"size:32;not null" json:"whatsapp"`
-	SessionDate         string     `gorm:"size:10;not null;index:idx_booking_slot" json:"session_date"`
-	SessionHour         string     `gorm:"size:5;not null;index:idx_booking_slot" json:"session_hour"`
-	SessionLocation     string     `gorm:"size:255;not null" json:"session_location"`
-	PaymentType         string     `gorm:"size:32;not null;default:'full'" json:"payment_type"`
-	AmountDue           int64      `gorm:"not null" json:"amount_due"`
-	PaymentMethod       string     `gorm:"size:64" json:"payment_method,omitempty"`
-	PaymentProofPath    string     `gorm:"size:512" json:"-"`
-	PaymentProofVersion string     `gorm:"size:64" json:"-"`
-	AccessTokenHash     string     `gorm:"size:64" json:"-"`
-	PaymentStatus       string     `gorm:"size:32;not null;default:'pending'" json:"payment_status"`
-	Status              string     `gorm:"size:32;not null;default:'pending_payment';index" json:"status"`
-	Notes               string     `gorm:"type:text" json:"notes,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
-	VerifiedAt          *time.Time `json:"verified_at,omitempty"`
-	ReminderSentAt      *time.Time `json:"reminder_sent_at,omitempty"`
-	Gallery             *Gallery   `gorm:"foreignKey:BookingID" json:"gallery,omitempty"`
+	ID                   uint       `gorm:"primaryKey" json:"id"`
+	Code                 string     `gorm:"size:191;uniqueIndex;not null" json:"code"`
+	PackageID            uint       `gorm:"not null;index" json:"package_id"`
+	Package              Package    `json:"package"`
+	FullName             string     `gorm:"size:191;not null" json:"full_name"`
+	CampusName           string     `gorm:"size:191;not null" json:"campus_name"`
+	WhatsApp             string     `gorm:"size:32;not null" json:"whatsapp"`
+	SessionDate          string     `gorm:"size:10;not null;index:idx_booking_slot" json:"session_date"`
+	SessionHour          string     `gorm:"size:5;not null;index:idx_booking_slot" json:"session_hour"`
+	SessionLocation      string     `gorm:"size:255;not null" json:"session_location"`
+	PaymentType          string     `gorm:"size:32;not null;default:'full'" json:"payment_type"`
+	AmountDue            int64      `gorm:"not null" json:"amount_due"`
+	PaidAmount           int64      `gorm:"not null;default:0" json:"paid_amount"`
+	PaymentOrderID       *string    `gorm:"size:191;uniqueIndex" json:"payment_order_id,omitempty"`
+	RequestID            *string    `gorm:"size:64;uniqueIndex" json:"-"`
+	PaymentTransactionID string     `gorm:"size:191" json:"-"`
+	PaymentQRURL         string     `gorm:"type:text" json:"-"`
+	PaymentExpiresAt     *time.Time `gorm:"index" json:"payment_expires_at,omitempty"`
+	PaymentCheckedAt     *time.Time `json:"-"`
+	PaymentMethod        string     `gorm:"size:64" json:"payment_method,omitempty"`
+	PaymentProofPath     string     `gorm:"size:512" json:"-"`
+	PaymentProofVersion  string     `gorm:"size:64" json:"-"`
+	AccessTokenHash      string     `gorm:"size:64" json:"-"`
+	PaymentStatus        string     `gorm:"size:32;not null;default:'pending'" json:"payment_status"`
+	Status               string     `gorm:"size:32;not null;default:'pending_payment';index" json:"status"`
+	Notes                string     `gorm:"type:text" json:"notes,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	VerifiedAt           *time.Time `json:"verified_at,omitempty"`
+	ReminderSentAt       *time.Time `json:"reminder_sent_at,omitempty"`
+	Gallery              *Gallery   `gorm:"foreignKey:BookingID" json:"gallery,omitempty"`
+}
+
+// PaymentNotice is written in the same transaction as verified payment.
+// Telegram delivery is retried independently of webhook acknowledgement.
+type PaymentNotice struct {
+	ID        uint   `gorm:"primaryKey"`
+	BookingID uint   `gorm:"uniqueIndex;not null"`
+	Message   string `gorm:"type:text;not null"`
+	SentAt    *time.Time
+	CreatedAt time.Time
 }
 
 type Photo struct {
@@ -146,6 +163,7 @@ type SubmitSelectionRequest struct {
 }
 
 type CreateBookingRequest struct {
+	RequestID       string `json:"request_id"`
 	PackageCode     string `json:"package_code"`
 	FullName        string `json:"full_name"`
 	CampusName      string `json:"campus_name"`

@@ -1,20 +1,27 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Port              string
-	DatabaseURL       string
-	JWTSecret         string
-	GoogleDriveAPIKey string
-	FrontendOrigin    string
-	UploadDir         string
-	PaymentProofDir   string
-	Environment       string
+	Port                    string
+	DatabaseURL             string
+	JWTSecret               string
+	GoogleDriveAPIKey       string
+	FrontendOrigin          string
+	UploadDir               string
+	PaymentProofDir         string
+	Environment             string
+	MidtransServerKey       string
+	MidtransBaseURL         string
+	MidtransIsProduction    bool
+	MidtransNotificationURL string
 }
 
 func LoadConfig() *Config {
@@ -57,15 +64,48 @@ func LoadConfig() *Config {
 	if environment == "" {
 		environment = "development"
 	}
+	midtransBase := "https://api.sandbox.midtrans.com"
+	if strings.EqualFold(os.Getenv("MIDTRANS_IS_PRODUCTION"), "true") {
+		midtransBase = "https://api.midtrans.com"
+	}
+	if value := strings.TrimRight(os.Getenv("MIDTRANS_BASE_URL"), "/"); value != "" {
+		midtransBase = value
+	}
+	notificationURL := strings.TrimSpace(os.Getenv("MIDTRANS_NOTIFICATION_URL"))
+	if notificationURL == "" {
+		notificationURL = strings.TrimRight(strings.Split(frontendOrigin, ",")[0], "/") + "/api/v1/payments/midtrans-notification"
+	}
 
 	return &Config{
-		Port:              port,
-		DatabaseURL:       dbURL,
-		JWTSecret:         jwtSecret,
-		GoogleDriveAPIKey: apiKey,
-		FrontendOrigin:    frontendOrigin,
-		UploadDir:         uploadDir,
-		PaymentProofDir:   paymentProofDir,
-		Environment:       environment,
+		Port:                    port,
+		DatabaseURL:             dbURL,
+		JWTSecret:               jwtSecret,
+		GoogleDriveAPIKey:       apiKey,
+		FrontendOrigin:          frontendOrigin,
+		UploadDir:               uploadDir,
+		PaymentProofDir:         paymentProofDir,
+		Environment:             environment,
+		MidtransServerKey:       strings.TrimSpace(os.Getenv("MIDTRANS_SERVER_KEY")),
+		MidtransBaseURL:         midtransBase,
+		MidtransIsProduction:    strings.EqualFold(os.Getenv("MIDTRANS_IS_PRODUCTION"), "true"),
+		MidtransNotificationURL: notificationURL,
 	}
+}
+
+func (c *Config) ValidateMidtrans() error {
+	expected := "https://api.sandbox.midtrans.com"
+	if c.MidtransIsProduction {
+		expected = "https://api.midtrans.com"
+	}
+	if c.MidtransBaseURL != expected {
+		return fmt.Errorf("MIDTRANS_BASE_URL must match MIDTRANS_IS_PRODUCTION (%s)", expected)
+	}
+	if (c.Environment == "production" || c.MidtransIsProduction) && c.MidtransServerKey == "" {
+		return fmt.Errorf("MIDTRANS_SERVER_KEY is required")
+	}
+	u, err := url.Parse(c.MidtransNotificationURL)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && u.Scheme != "http") || (u.Scheme != "https" && (c.Environment == "production" || c.MidtransIsProduction)) {
+		return fmt.Errorf("MIDTRANS_NOTIFICATION_URL must be a public HTTPS URL without credentials, query or fragment")
+	}
+	return nil
 }

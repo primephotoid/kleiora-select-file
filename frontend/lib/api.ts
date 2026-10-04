@@ -51,6 +51,9 @@ export interface BookingItem {
   session_location: string;
   payment_type: 'full' | 'dp' | 'dp_custom';
   amount_due: number;
+	paid_amount?: number;
+	payment_order_id?: string;
+	payment_expires_at?: string;
   payment_status: string;
   status: string;
   payment_method?: string;

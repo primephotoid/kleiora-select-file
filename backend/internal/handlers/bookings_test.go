@@ -20,13 +20,15 @@ import (
 	"kleiora-backend/internal/models"
 	"kleiora-backend/internal/services"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
 func bookingTestApp(t *testing.T) (*fiber.App, *gorm.DB) {
 	t.Helper()
+	t.Setenv("TELEGRAM_BOT_TOKEN", "")
+	t.Setenv("TELEGRAM_CHAT_ID", "")
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +171,10 @@ func createBookingForTest(t *testing.T, app *fiber.App, name string) (models.Boo
 func TestBookingDetailsAndPaymentProofRequireAccessToken(t *testing.T) {
 	app, db := bookingTestApp(t)
 	booking, accessToken := createBookingForTest(t, app, "Dewi")
+	// Historical manual bookings remain verifiable; new QRIS bookings cannot upload proofs.
+	if err := db.Model(&booking).Updates(map[string]any{"payment_order_id": nil, "payment_method": "transfer"}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	request := httptest.NewRequest(http.MethodGet, "/bookings/"+booking.Code, nil)
 	response, err := app.Test(request)
@@ -489,6 +495,9 @@ func TestListBookingsSupportsServerSidePaginationSearchFilterAndSort(t *testing.
 func TestDeleteBookingOnlyDeletesExactlyLinkedGallery(t *testing.T) {
 	app, db := bookingTestApp(t)
 	booking, _ := createBookingForTest(t, app, "Gita")
+	if err := db.Model(&booking).Update("payment_order_id", nil).Error; err != nil {
+		t.Fatal(err)
+	}
 	linked := models.Gallery{Slug: "linked-gallery", PhotographerID: 1, BookingID: &booking.ID, DriveFolderID: "folder-1", Title: "Gita", ClientName: "Gita", Status: "active"}
 	unrelated := models.Gallery{Slug: "unrelated-gallery", PhotographerID: 1, DriveFolderID: "folder-2", Title: "Gita graduation", ClientName: "Gita", Status: "active"}
 	if err := db.Create(&linked).Error; err != nil {
@@ -623,4 +632,3 @@ func TestMarkGallerySent(t *testing.T) {
 		t.Fatalf("expected status to be active after re-sending, got %s", updated.Status)
 	}
 }
-
