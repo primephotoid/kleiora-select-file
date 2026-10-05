@@ -83,7 +83,6 @@ func (h *Handler) GetAnalyticsSummary(c *fiber.Ctx) error {
 		Select("DATE(created_at) as date, count(id) as total_views, count(distinct session_id) as unique_visits").
 		Group("DATE(created_at)").
 		Order("date asc").
-		Limit(30).
 		Find(&dailyTraffic)
 
 	var recentHistory []models.VisitorLog
