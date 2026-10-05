@@ -749,7 +749,7 @@ function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGall
     <td className="px-4 py-4"><div className="ml-auto flex flex-nowrap justify-end gap-1.5">
       {item.payment_status === 'submitted' && !item.payment_order_id && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className={smallButton}><ExternalLink className="h-3 w-3" />Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className={`${smallButton} border-emerald-700 bg-emerald-700 text-white`}><CheckCircle2 className="h-3 w-3" />Verifikasi</button></>}
       {isCompleted ? (hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>) : hasGallery && item.payment_status === 'verified' ? <>{hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>}<button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
-      {!item.payment_order_id && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>}
+      {(!item.payment_order_id || item.status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>}
     </div></td>
   </tr>;
 }
@@ -786,7 +786,7 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
               ) : item.payment_status === 'pending' ? (
                 <span className="text-xs text-[var(--muted)]">Menunggu pembayaran</span>
               ) : null}
-              {!item.payment_order_id && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>}
+              {(!item.payment_order_id || item.status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>}
             </div></div></article>;
 }
 
