@@ -205,7 +205,7 @@ func (h *Handler) applyPayment(tx *gorm.DB, b *models.Booking, p services.Midtra
 		if paymentStatus == "payment_review" {
 			kind = "Pembayaran diterima setelah reservasi berakhir — PERIKSA JADWAL / REFUND"
 		}
-		message := fmt.Sprintf("Pembayaran QRIS terkonfirmasi Midtrans\n%s\nKode: %s\nKlien: %s\nWhatsApp: %s\nNominal diterima: Rp %s\nSesi: %s %s.00 WITA\nLokasi: %s\nOrder: %s", kind, b.Code, b.FullName, b.WhatsApp, services.FormatPaymentAmount(b.AmountDue), b.SessionDate, b.SessionHour, b.SessionLocation, *b.PaymentOrderID)
+		message := fmt.Sprintf("Pembayaran QRIS terkonfirmasi otomatis\n%s\nKode: %s\nKlien: %s\nWhatsApp: %s\nNominal diterima: Rp %s\nSesi: %s %s.00 WITA\nLokasi: %s\nOrder: %s", kind, b.Code, b.FullName, b.WhatsApp, services.FormatPaymentAmount(b.AmountDue), b.SessionDate, b.SessionHour, b.SessionLocation, *b.PaymentOrderID)
 		return tx.Create(&models.PaymentNotice{BookingID: b.ID, Message: message}).Error
 	case "expire", "deny", "cancel", "failure":
 		if b.PaidAmount == 0 {

@@ -570,7 +570,7 @@ function BookingFlow() {
                   <h3 className="mb-4 font-bold">Pilih Metode Pembayaran</h3>
                   <div className="grid gap-4 sm:grid-cols-3">
                     {[
-                      { id: 'qris', title: 'QRIS (Midtrans)', desc: 'Instant & Konfirmasi Otomatis', icon: <QrCode className="h-6 w-6 text-[var(--gold-dark)]" /> },
+                      { id: 'qris', title: 'QRIS Otomatis', desc: 'Instant & Konfirmasi Otomatis', icon: <QrCode className="h-6 w-6 text-[var(--gold-dark)]" /> },
                       { id: 'transfer', title: 'Transfer Bank', desc: 'BCA, Mandiri, BRI, SeaBank', icon: <Landmark className="h-6 w-6" /> },
                       { id: 'ewallet', title: 'E-Wallet', desc: 'DANA, ShopeePay, OVO', icon: <Wallet className="h-6 w-6" /> }
                     ].map(method => (
@@ -587,12 +587,12 @@ function BookingFlow() {
                 </div>
               )}
 
-              {/* Rincian QRIS Midtrans */}
+              {/* Rincian QRIS */}
               {paymentMethod === 'qris' && (
                 <div className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--surface2)] p-5 sm:p-6 text-center">
                   <div className="flex justify-center items-center gap-2 mb-2">
                     <QrCode className="h-6 w-6 text-[var(--gold-dark)]" />
-                    <h3 className="font-bold text-lg">Pembayaran QRIS Midtrans</h3>
+                    <h3 className="font-bold text-lg">Pembayaran QRIS</h3>
                   </div>
                   <p className="text-sm text-[var(--muted)]">Scan via aplikasi bank atau e-wallet pilihanmu. Sistem mengonfirmasi pembayaran secara **otomatis** tanpa perlu mengunggah bukti transfer.</p>
                   
