@@ -431,8 +431,16 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusBadRequest, "Nominal pembayaran harus lebih dari nol")
 	}
 	expiresAt := time.Now().Add(30 * time.Minute)
-	orderID := "KLR-" + bookingTokenHash("midtrans-order:" + accessToken)[:32]
-	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentMethod: "qris", PaymentOrderID: &orderID, PaymentExpiresAt: &expiresAt, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
+	paymentMethod := strings.ToLower(strings.TrimSpace(req.PaymentMethod))
+	if paymentMethod == "" {
+		paymentMethod = "qris"
+	}
+	var paymentOrderID *string
+	if paymentMethod == "qris" {
+		orderID := "KLR-" + bookingTokenHash("midtrans-order:" + accessToken)[:32]
+		paymentOrderID = &orderID
+	}
+	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentMethod: paymentMethod, PaymentOrderID: paymentOrderID, PaymentExpiresAt: &expiresAt, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
 	bookingCreateMu.Lock()
 	booking.RequestID = requestID
 	defer bookingCreateMu.Unlock()

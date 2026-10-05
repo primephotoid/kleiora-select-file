@@ -172,6 +172,7 @@ type CreateBookingRequest struct {
 	SessionHour     string `json:"session_hour"`
 	SessionLocation string `json:"session_location"`
 	PaymentType     string `json:"payment_type"`
+	PaymentMethod   string `json:"payment_method"`
 	CustomDPAmount  int64  `json:"custom_dp_amount"`
 	Notes           string `json:"notes"`
 }
