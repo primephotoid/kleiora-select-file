@@ -38,6 +38,7 @@ function BookingFlow() {
   const [processingProof, setProcessingProof] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('qris');
   const [copiedText, setCopiedText] = useState('');
+  const [dpRawInput, setDpRawInput] = useState('');
   
   // QRIS Midtrans states
   const [requestID, setRequestID] = useState('');
@@ -556,7 +557,24 @@ function BookingFlow() {
                       {form.payment_type !== 'dp_custom' && <p className="mt-1 text-xs text-[var(--muted)]">Input manual (Min 50k)</p>}
                       {form.payment_type === 'dp_custom' && (
                         <div className="mt-3">
-                          <input type="number" min="50000" max={selectedPackage.price} value={form.custom_dp_amount || ''} onChange={e => setForm({...form, custom_dp_amount: parseInt(e.target.value) || 0})} className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface2)] p-2 text-sm focus:border-[var(--gold)] focus:outline-none" placeholder="Nominal (Min 50k)" />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            min="50000"
+                            max={selectedPackage.price}
+                            value={dpRawInput}
+                            onChange={e => {
+                              const raw = e.target.value.replace(/\D/g, '');
+                              const num = parseInt(raw) || 0;
+                              setDpRawInput(raw === '' ? '' : num.toLocaleString('id-ID'));
+                              setForm({...form, custom_dp_amount: num});
+                            }}
+                            className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface2)] p-2 text-sm focus:border-[var(--gold)] focus:outline-none"
+                            placeholder="Nominal (Min 50.000)"
+                          />
+                          {form.custom_dp_amount > 0 && (
+                            <p className="mt-1 text-xs text-[var(--muted)]">= {formatRupiah(form.custom_dp_amount)}</p>
+                          )}
                         </div>
                       )}
                     </label>
@@ -594,8 +612,8 @@ function BookingFlow() {
                     <QrCode className="h-6 w-6 text-[var(--gold-dark)]" />
                     <h3 className="font-bold text-lg">Pembayaran QRIS</h3>
                   </div>
-                  <p className="text-sm text-[var(--muted)]">Scan via aplikasi bank atau e-wallet pilihanmu. Sistem mengonfirmasi pembayaran secara **otomatis** tanpa perlu mengunggah bukti transfer.</p>
-                  
+                  <p className="text-sm text-[var(--muted)]">Scan via aplikasi bank atau e-wallet pilihanmu. Sistem mengonfirmasi pembayaran secara otomatis tanpa perlu mengunggah bukti transfer.</p>
+
                   {booking && (
                     <div className="mt-5 rounded-xl bg-[var(--surface)] p-4 text-left border border-[var(--line)]">
                       <p className="font-mono text-xs text-[var(--muted)]">Kode Booking: <strong className="text-[var(--text)]">{booking.code}</strong></p>
@@ -611,12 +629,52 @@ function BookingFlow() {
                     </div>
                   )}
                   {booking && <p className="mt-4 text-xs text-[var(--muted)]">Periksa status pembayaran secara berkala atau biarkan halaman ini terbuka untuk verifikasi otomatis.</p>}
+
+                  {/* Ubah metode pembayaran */}
+                  {booking && !['verified', 'payment_review'].includes(booking.payment_status) && (
+                    <div className="mt-5 border-t border-[var(--line)] pt-4">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBooking(null);
+                          setBookingAccessToken('');
+                          setQRAvailable(false);
+                          setQRImage('');
+                          setProof(null);
+                          setProofPreview('');
+                        }}
+                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-xs font-semibold text-[var(--text)] transition hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Ubah Metode Pembayaran
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Rincian Transfer Bank / E-Wallet Manual */}
               {(paymentMethod === 'transfer' || paymentMethod === 'ewallet') && (
                 <div className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--surface2)] p-5 sm:p-6">
+                  {/* Ubah metode pembayaran (manual) */}
+                  {booking && !['verified', 'payment_review'].includes(booking.payment_status) && (
+                    <div className="mb-5 flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3">
+                      <div className="flex-1 text-xs text-[var(--muted)]">
+                        Sudah booking dengan metode ini. Ingin pakai metode lain?
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBooking(null);
+                          setBookingAccessToken('');
+                          setProof(null);
+                          setProofPreview('');
+                        }}
+                        className="flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface2)] px-3 py-2 text-xs font-semibold text-[var(--text)] transition hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Ubah Metode
+                      </button>
+                    </div>
+                  )}
                   {paymentMethod === 'transfer' && (
                     <>
                       <h3 className="mb-4 font-bold">Detail Rekening Transfer Bank</h3>
