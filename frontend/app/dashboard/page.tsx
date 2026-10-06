@@ -1049,8 +1049,12 @@ function CreatePackageModal({ form, setForm, creating, onClose, onSubmit }: { fo
             <Field label="Nama Paket"><input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="admin-field" placeholder="Contoh: Personal Package" /></Field>
             <Field label="Kode Paket"><input required value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} className="admin-field" placeholder="Contoh: personal-1" /></Field>
             
-            <div className="sm:col-span-2">
-              <Field label="Harga (Rp)"><input required type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="admin-field" /></Field>
+            <div className="sm:col-span-2 grid gap-4 sm:grid-cols-2">
+              <Field label="Harga Makassar (Rp)"><input required type="number" min="0" value={form.price} onChange={e => setForm({ ...form, price: Number(e.target.value) })} className="admin-field" /></Field>
+              <div>
+                <Field label="Harga Luar Makassar (Rp)"><input type="number" min="0" value={(form as { price_out_of_town?: number }).price_out_of_town ?? 0} onChange={e => setForm({ ...form, price_out_of_town: Number(e.target.value) } as typeof form)} className="admin-field" /></Field>
+                <p className="mt-1 text-[11px] text-[var(--muted)]">Isi jika ada surcharge untuk klien di luar Makassar. Kosongkan atau isi 0 untuk menggunakan harga yang sama.</p>
+              </div>
             </div>
             
             <div className="sm:col-span-2">

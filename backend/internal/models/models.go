@@ -34,22 +34,23 @@ type Gallery struct {
 }
 
 type Package struct {
-	ID             uint      `gorm:"primaryKey" json:"id"`
-	Code           string    `gorm:"size:191;uniqueIndex;not null" json:"code"`
-	Name           string    `gorm:"size:191;not null" json:"name"`
-	Description    string    `gorm:"type:text" json:"description"`
-	Price          int64     `gorm:"not null" json:"price"`
-	DurationHours  int       `gorm:"not null;default:1" json:"duration_hours"`
-	DurationLabel  string    `gorm:"size:64" json:"duration_label,omitempty"`
-	LocationCount  int       `gorm:"not null;default:1" json:"location_count"`
-	EditedPhotos   int       `gorm:"not null;default:20" json:"edited_photos"`
-	IncludesPrint  string    `gorm:"size:255" json:"includes_print,omitempty"`
-	IncludesTeaser bool      `json:"includes_teaser"`
-	ImagePath      string    `gorm:"size:512" json:"image_path"`
-	IsActive       bool      `gorm:"not null;default:true" json:"is_active"`
-	SortOrder      int       `gorm:"not null;default:0" json:"sort_order"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	Code             string    `gorm:"size:191;uniqueIndex;not null" json:"code"`
+	Name             string    `gorm:"size:191;not null" json:"name"`
+	Description      string    `gorm:"type:text" json:"description"`
+	Price            int64     `gorm:"not null" json:"price"`
+	PriceOutOfTown   int64     `gorm:"not null;default:0" json:"price_out_of_town"`
+	DurationHours    int       `gorm:"not null;default:1" json:"duration_hours"`
+	DurationLabel    string    `gorm:"size:64" json:"duration_label,omitempty"`
+	LocationCount    int       `gorm:"not null;default:1" json:"location_count"`
+	EditedPhotos     int       `gorm:"not null;default:20" json:"edited_photos"`
+	IncludesPrint    string    `gorm:"size:255" json:"includes_print,omitempty"`
+	IncludesTeaser   bool      `json:"includes_teaser"`
+	ImagePath        string    `gorm:"size:512" json:"image_path"`
+	IsActive         bool      `gorm:"not null;default:true" json:"is_active"`
+	SortOrder        int       `gorm:"not null;default:0" json:"sort_order"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type Portfolio struct {
@@ -175,6 +176,7 @@ type CreateBookingRequest struct {
 	PaymentMethod   string `json:"payment_method"`
 	CustomDPAmount  int64  `json:"custom_dp_amount"`
 	Notes           string `json:"notes"`
+	IsOutOfTown     bool   `json:"is_out_of_town"`
 }
 
 type VisitorLog struct {

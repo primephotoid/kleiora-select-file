@@ -4,7 +4,7 @@ import { ArrowRight, CalendarCheck, Check, Images, MessageCircle, ShieldCheck, S
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { ReviewSection } from '@/components/ReviewSection';
 import { PortfolioGallery } from '@/components/PortfolioGallery';
-import { PricelistGallery } from '@/components/PricelistGallery';
+import { HomePricelist } from '@/components/HomePricelist';
 import { API_BASE_URL, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem } from '@/lib/api';
 
 const structuredData = {
@@ -155,7 +155,7 @@ export default async function HomePage() {
         {packages.length > 0 && (
           <section id="pricelist" className="border-y border-[var(--line)] bg-[var(--surface)] py-24">
             <div className="mx-auto max-w-6xl px-6">
-              <PricelistGallery
+              <HomePricelist
                 packages={packages}
                 subtitle="Pricelist foto wisuda"
                 title="Pilihan paket sesuai kebutuhanmu"

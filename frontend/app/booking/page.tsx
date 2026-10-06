@@ -8,7 +8,9 @@ import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl, API_BASE_URL } from '@/lib/api';
 import { LocationAutocomplete } from '@/components/LocationAutocomplete';
 import { PricelistGallery } from '@/components/PricelistGallery';
+import { RegionSwitcher } from '@/components/RegionSwitcher';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useRegion, effectivePrice } from '@/lib/useRegion';
 import imageCompression from 'browser-image-compression';
 
 interface Slot { hour: string; remaining: number; available: boolean }
@@ -21,6 +23,7 @@ function todayInMakassar() {
 
 function BookingFlow() {
   const searchParams = useSearchParams();
+  const { region, setRegion, detecting } = useRegion();
   const [packages, setPackages] = useState<PackageItem[]>([]);
   const [selectedCode, setSelectedCode] = useState(searchParams.get('package') ?? '');
   const [step, setStep] = useState(1);
@@ -237,6 +240,12 @@ function BookingFlow() {
   }, [form.session_date, booking]);
 
   const selectedPackage = useMemo(() => packages.find(pkg => pkg.code === selectedCode), [packages, selectedCode]);
+  const isOutOfTown = region === 'out_of_town';
+  // Effective amount due based on region
+  const displayAmount = useMemo(() => {
+    if (!selectedPackage) return 0;
+    return effectivePrice(selectedPackage, region);
+  }, [selectedPackage, region]);
 
   function proceedToPayment(event: FormEvent) {
     event.preventDefault();
@@ -247,7 +256,7 @@ function BookingFlow() {
       setError('Periksa kembali data yang ditandai di bawah ini.');
       return;
     }
-    if (form.payment_type === 'dp_custom' && (!form.custom_dp_amount || form.custom_dp_amount < 50000 || form.custom_dp_amount > (selectedPackage?.price || 0))) {
+    if (form.payment_type === 'dp_custom' && (!form.custom_dp_amount || form.custom_dp_amount < 50000 || form.custom_dp_amount > displayAmount)) {
       setError('Masukkan nominal DP Custom minimal Rp50.000 dan tidak lebih dari harga paket.');
       return;
     }
@@ -257,7 +266,7 @@ function BookingFlow() {
   }
 
   async function createBooking() {
-    if (!booking && form.payment_type === 'dp_custom' && (!Number.isInteger(form.custom_dp_amount) || form.custom_dp_amount < 50000 || form.custom_dp_amount > (selectedPackage?.price || 0))) {
+    if (!booking && form.payment_type === 'dp_custom' && (!Number.isInteger(form.custom_dp_amount) || form.custom_dp_amount < 50000 || form.custom_dp_amount > displayAmount)) {
       setError('DP custom minimal Rp50.000 dan tidak boleh melebihi harga paket.');
       return;
     }
@@ -272,7 +281,7 @@ function BookingFlow() {
         let current = booking, token = bookingAccessToken;
         if (!current || !token) {
           const created = await apiRequest<{ booking: BookingItem; access_token: string }>('/bookings', {
-            method: 'POST', body: JSON.stringify({ ...form, payment_method: 'qris', package_code: selectedCode, request_id: requestID }),
+            method: 'POST', body: JSON.stringify({ ...form, payment_method: 'qris', package_code: selectedCode, request_id: requestID, is_out_of_town: isOutOfTown }),
           });
           current = created.booking; token = created.access_token;
           setBooking(current); setBookingAccessToken(token);
@@ -303,7 +312,7 @@ function BookingFlow() {
         let activeAccessToken = bookingAccessToken;
         if (!activeBooking || !activeAccessToken) {
           const result = await apiRequest<{ booking: BookingItem; access_token: string }>('/bookings', {
-            method: 'POST', body: JSON.stringify({ ...form, payment_method: paymentMethod, package_code: selectedCode, request_id: requestID })
+            method: 'POST', body: JSON.stringify({ ...form, payment_method: paymentMethod, package_code: selectedCode, request_id: requestID, is_out_of_town: isOutOfTown })
           });
           activeBooking = result.booking;
           activeAccessToken = result.access_token;
@@ -368,6 +377,7 @@ function BookingFlow() {
 
         {step === 1 && (
           <section>
+            <RegionSwitcher region={region} detecting={detecting} onSwitch={setRegion} />
             {loading ? (
               <div className="flex justify-center py-24">
                 <Loader2 className="h-7 w-7 animate-spin text-[var(--gold-dark)]" />
@@ -376,6 +386,7 @@ function BookingFlow() {
               <PricelistGallery
                 packages={packages}
                 selectedCode={selectedCode}
+                region={region}
                 onSelectPackage={(code) => {
                   setSelectedCode(code);
                   setStep(2);
@@ -412,7 +423,10 @@ function BookingFlow() {
                   )}
                 </div>
                 <h2 className="mt-5 font-serif text-2xl font-semibold">{selectedPackage.name}</h2>
-                <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(selectedPackage.price)}</p>
+                <p className="mt-1 font-bold text-[var(--gold-dark)]">{formatRupiah(displayAmount)}</p>
+                {isOutOfTown && selectedPackage.price_out_of_town > 0 && (
+                  <p className="text-xs text-[var(--muted)] line-through">{formatRupiah(selectedPackage.price)}</p>
+                )}
                 <p className="mt-4 text-xs leading-5 text-[var(--muted)]">Kuota pilihan setelah sesi: {selectedPackage.edited_photos} foto.</p>
                 <button onClick={() => setStep(1)} className="btn-secondary mt-5 w-full px-4 py-2.5 text-sm"><ArrowLeft className="h-4 w-4" /> Ubah Paket</button>
               </div>
@@ -512,7 +526,10 @@ function BookingFlow() {
                   </div>
                   <div>
                     <p className="font-bold">{selectedPackage.name}</p>
-                    <p className="text-sm text-[var(--gold-dark)]">{formatRupiah(selectedPackage.price)}</p>
+                    <p className="text-sm text-[var(--gold-dark)]">{formatRupiah(displayAmount)}</p>
+                    {isOutOfTown && selectedPackage.price_out_of_town > 0 && (
+                      <p className="text-[11px] text-[var(--muted)] line-through">{formatRupiah(selectedPackage.price)}</p>
+                    )}
                   </div>
                 </div>
                 <hr className="my-4 border-[var(--line)]" />
@@ -527,7 +544,7 @@ function BookingFlow() {
                 </div>
                 <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--surface2)] p-3 text-sm font-bold">
                   <span>Harus Bayar</span>
-                  <span className="text-[var(--gold-dark)]">{formatRupiah(booking?.amount_due ?? (form.payment_type === 'dp' ? Math.floor(selectedPackage.price / 2) : form.payment_type === 'dp_custom' ? form.custom_dp_amount : selectedPackage.price))}</span>
+                  <span className="text-[var(--gold-dark)]">{formatRupiah(booking?.amount_due ?? (form.payment_type === 'dp' ? Math.floor(displayAmount / 2) : form.payment_type === 'dp_custom' ? form.custom_dp_amount : displayAmount))}</span>
                 </div>
               </div>
             </aside>
@@ -552,12 +569,12 @@ function BookingFlow() {
                     <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'full' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
                       <input type="radio" className="hidden" checked={form.payment_type === 'full'} onChange={() => setForm({...form, payment_type:'full'})} />
                       <p className="text-sm font-medium text-[var(--muted)]">Lunas</p>
-                      <p className="mt-1 text-xl font-bold">{formatRupiah(selectedPackage.price)}</p>
+                      <p className="mt-1 text-xl font-bold">{formatRupiah(displayAmount)}</p>
                     </label>
                     <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'dp' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
                       <input type="radio" className="hidden" checked={form.payment_type === 'dp'} onChange={() => setForm({...form, payment_type:'dp'})} />
                       <p className="text-sm font-medium text-[var(--muted)]">DP 50%</p>
-                      <p className="mt-1 text-xl font-bold">{formatRupiah(selectedPackage.price / 2)}</p>
+                      <p className="mt-1 text-xl font-bold">{formatRupiah(displayAmount / 2)}</p>
                     </label>
                     <label className={`cursor-pointer rounded-xl border p-5 transition-colors ${form.payment_type === 'dp_custom' ? 'border-[var(--gold)] bg-[var(--gold-glow)]' : 'border-[var(--line)] hover:border-[var(--gold)]'}`}>
                       <input type="radio" className="hidden" checked={form.payment_type === 'dp_custom'} onChange={() => setForm({...form, payment_type:'dp_custom'})} />
@@ -569,7 +586,7 @@ function BookingFlow() {
                             type="text"
                             inputMode="numeric"
                             min="50000"
-                            max={selectedPackage.price}
+                            max={displayAmount}
                             value={dpRawInput}
                             onChange={e => {
                               const raw = e.target.value.replace(/\D/g, '');

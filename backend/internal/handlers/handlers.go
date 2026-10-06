@@ -416,6 +416,9 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 		accessToken = hex.EncodeToString(mac.Sum(nil))
 	}
 	amount := pkg.Price
+	if req.IsOutOfTown && pkg.PriceOutOfTown > 0 {
+		amount = pkg.PriceOutOfTown
+	}
 	if req.PaymentType == "dp" {
 		amount /= 2
 	} else if req.PaymentType == "dp_custom" {
@@ -1126,6 +1129,7 @@ func (h *Handler) UpdatePackage(c *fiber.Ctx) error {
 	pkg.Code = input.Code
 	pkg.Description = input.Description
 	pkg.Price = input.Price
+	pkg.PriceOutOfTown = input.PriceOutOfTown
 	pkg.DurationHours = input.DurationHours
 	pkg.DurationLabel = input.DurationLabel
 	pkg.LocationCount = input.LocationCount

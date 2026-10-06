@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { PackageItem, formatRupiah, getImageUrl } from '@/lib/api';
+import { Region, effectivePrice } from '@/lib/useRegion';
 import { ArrowRight, ChevronDown, Clock, Images, MapPin, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   onSelectPackage?: (code: string) => void;
   title?: string;
   subtitle?: string;
+  region?: Region;
 }
 
 export function PricelistGallery({
@@ -19,6 +21,7 @@ export function PricelistGallery({
   onSelectPackage,
   title,
   subtitle,
+  region = 'makassar',
 }: Props) {
   const [showAll, setShowAll] = useState(false);
 
@@ -47,6 +50,9 @@ export function PricelistGallery({
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {visiblePackages.map((pkg) => {
           const isSelected = selectedCode === pkg.code;
+          const displayPrice = effectivePrice(pkg, region);
+          const hasOutOfTownPrice = pkg.price_out_of_town > 0;
+          const isOutOfTown = region === 'out_of_town';
           return (
             <div
               key={pkg.code || pkg.id}
@@ -56,6 +62,15 @@ export function PricelistGallery({
                   : 'border-[var(--line)]'
               }`}
             >
+              {/* Out-of-town badge */}
+              {isOutOfTown && hasOutOfTownPrice && (
+                <div className="absolute left-2.5 top-2.5 z-10">
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                    Luar Kota
+                  </span>
+                </div>
+              )}
+
               {/* Media preview with 3:4 aspect ratio matching reference */}
               <div className="relative aspect-[3/4] w-full overflow-hidden rounded-[18px] bg-[var(--surface2)] shadow-inner">
                 {pkg.image_path?.match(/\.(mp4|webm)$/i) ? (
@@ -83,9 +98,18 @@ export function PricelistGallery({
                   <h3 className="font-serif text-base sm:text-xl font-semibold text-[var(--text)] line-clamp-1">
                     {pkg.name}
                   </h3>
-                  <p className="mt-0.5 text-xs sm:text-sm font-bold text-[var(--gold-dark)]">
-                    {formatRupiah(pkg.price)}
-                  </p>
+
+                  <div className="mt-0.5">
+                    <p className="text-xs sm:text-sm font-bold text-[var(--gold-dark)]">
+                      {formatRupiah(displayPrice)}
+                    </p>
+                    {/* Show original Makassar price as reference when out of town */}
+                    {isOutOfTown && hasOutOfTownPrice && (
+                      <p className="text-[10px] text-[var(--muted)] line-through">
+                        Makassar: {formatRupiah(pkg.price)}
+                      </p>
+                    )}
+                  </div>
 
                   {pkg.description && (
                     <p className="mt-1.5 text-xs leading-5 text-[var(--muted)] line-clamp-2">

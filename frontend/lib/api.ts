@@ -26,9 +26,9 @@ export interface PackageItem {
   name: string;
   description: string;
   price: number;
+  price_out_of_town: number;
   duration_hours: number;
   duration_label?: string;
-
   location_count: number;
   edited_photos: number;
   includes_print?: string;
