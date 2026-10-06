@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { PackageItem, formatRupiah, getImageUrl } from '@/lib/api';
 import { Region, effectivePrice } from '@/lib/useRegion';
-import { ArrowRight, ChevronDown, Clock, Images, MapPin, Sparkles } from 'lucide-react';
+import { ArrowRight, ChevronDown, Clock, Images, MapPin } from 'lucide-react';
 
 interface Props {
   packages: PackageItem[];
@@ -176,7 +176,6 @@ export function PricelistGallery({
             onClick={() => setShowAll(!showAll)}
             className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 rounded-full border border-[var(--gold-dark)] bg-[var(--surface)] px-8 py-4 text-xs font-bold uppercase tracking-wider text-[var(--gold-dark)] shadow-sm transition hover:bg-[var(--gold-dark)] hover:text-white active:scale-[0.98]"
           >
-            <Sparkles className="h-4 w-4" />
             {!showAll
               ? `LIHAT SEMUA PRICELIST (${packages.length} PAKET)`
               : 'SEMBUNYIKAN PRICELIST'}
