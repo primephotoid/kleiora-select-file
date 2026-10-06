@@ -1038,8 +1038,8 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
 	}
 
-	if booking.PaymentOrderID != nil {
-		return apiError(c, fiber.StatusConflict, "Riwayat transaksi QRIS tidak boleh dihapus; reservasi belum dibayar akan berakhir otomatis")
+	if booking.PaymentOrderID != nil && booking.Status != "expired" && booking.PaymentStatus != "expired" {
+		return apiError(c, fiber.StatusConflict, "Riwayat transaksi QRIS aktif tidak boleh dihapus; reservasi belum dibayar akan berakhir otomatis")
 	}
 	err := h.db.Transaction(func(tx *gorm.DB) error {
 		var galleryIDs []uint

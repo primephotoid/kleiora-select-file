@@ -1,7 +1,13 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://kleioragrads.com';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

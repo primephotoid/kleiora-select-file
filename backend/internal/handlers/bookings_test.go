@@ -522,6 +522,29 @@ func TestDeleteBookingOnlyDeletesExactlyLinkedGallery(t *testing.T) {
 	}
 }
 
+func TestDeleteExpiredBookingWithPaymentOrderID(t *testing.T) {
+	app, db := bookingTestApp(t)
+	booking, _ := createBookingForTest(t, app, "ExpiredUser")
+	orderID := "ORDER-EXPIRED-123"
+	if err := db.Model(&booking).Updates(map[string]any{"payment_order_id": orderID, "status": "expired", "payment_status": "expired"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/studio/bookings/"+booking.Code, nil)
+	response, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != fiber.StatusOK {
+		t.Fatalf("expected expired booking to be deleted with status 200, got %d", response.StatusCode)
+	}
+	var count int64
+	db.Model(&models.Booking{}).Where("code = ?", booking.Code).Count(&count)
+	if count != 0 {
+		t.Fatalf("expected expired booking record to be deleted, count: %d", count)
+	}
+}
+
 func TestConcurrentBookingRequestsCannotExceedSlotCapacity(t *testing.T) {
 	app, db := bookingTestApp(t)
 	const requests = 8

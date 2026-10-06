@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { API_BASE_URL, apiRequest, BookingItem, formatRupiah, getImageUrl, PackageItem, PortfolioItem, ReviewItem, uploadPackageImage, uploadPortfolioImage, getAnalyticsSummary, AnalyticsSummary, reorderPackages } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ToastContainer, ToastMessage } from '@/components/Toast';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 import { ImageCropper } from '@/components/ImageCropper';
 import { VideoTrimmer } from '@/components/VideoTrimmer';
@@ -50,6 +51,12 @@ export default function DashboardPage() {
   const [paymentProofPreview, setPaymentProofPreview] = useState<{ code: string; url: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const addToast = (type: 'success' | 'error' | 'info', message: string) => {
+    setToasts(prev => [...prev, { id: Math.random().toString(36).substring(2, 9), type, message }]);
+  };
+  const removeToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
   const [tab, setTab] = useState<DashboardTab>('bookings');
   const [filter, setFilter] = useState<BookingFilter>('all');
   const [search, setSearch] = useState('');
@@ -251,8 +258,13 @@ export default function DashboardPage() {
       if (!proofVersion) throw new Error('Buka bukti pembayaran terbaru sebelum melakukan verifikasi.');
       await apiRequest(`/studio/bookings/${code}/verify-payment`, { method: 'PATCH', headers: { ...authHeaders(), 'X-Payment-Proof-Version': proofVersion } });
       setProofVersions(current => { const next = { ...current }; delete next[code]; return next; });
+      addToast('success', `Pembayaran booking ${code} berhasil diverifikasi!`);
       await loadBookings(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Verifikasi gagal.'); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Verifikasi gagal.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally { setProcessing(''); }
   }
 
@@ -266,7 +278,11 @@ export default function DashboardPage() {
       setProofVersions(current => ({ ...current, [code]: proofVersion }));
       const url = URL.createObjectURL(await response.blob());
       setPaymentProofPreview({ code, url });
-    } catch (err) { setError(err instanceof Error ? err.message : 'Bukti pembayaran tidak dapat dibuka.'); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Bukti pembayaran tidak dapat dibuka.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally { setProcessing(''); }
   }
 
@@ -276,7 +292,12 @@ export default function DashboardPage() {
       const payload = { ...form, booking_id: form.booking_id ? Number(form.booking_id) : undefined };
       await apiRequest('/studio/galleries', { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
       setShowCreate(false); setForm(emptyGalleryForm); await load(true); setTab('galleries');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Galeri gagal dibuat.'); }
+      addToast('success', 'Galeri baru berhasil dibuat!');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Galeri gagal dibuat.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally { setCreating(false); }
   }
 
@@ -286,7 +307,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/galleries/${id}`, { method: 'DELETE', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Galeri gagal dihapus.'); setRefreshing(false); }
+      addToast('success', 'Galeri berhasil dihapus.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Galeri gagal dihapus.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function sendGallery(item: BookingItem) {
@@ -315,6 +342,7 @@ export default function DashboardPage() {
         return b;
       }));
       setGalleries(prev => prev.map(g => g.slug === item.gallery?.slug ? { ...g, status: 'active', gallery_sent_at: nowIso } : g));
+      addToast('info', 'Status galeri diperbarui menjadi terkirim.');
     } catch (err) {
       console.error('Failed to mark gallery sent:', err);
     }
@@ -329,6 +357,7 @@ export default function DashboardPage() {
       const nowIso = new Date().toISOString();
       setGalleries(prev => prev.map(g => g.slug === slug ? { ...g, status: 'active', gallery_sent_at: nowIso } : g));
       setBookings(prev => prev.map(b => b.gallery?.slug === slug ? { ...b, gallery: { ...b.gallery, status: 'active', gallery_sent_at: nowIso } } : b));
+      addToast('info', 'Akses galeri dibuka kembali.');
     } catch (err) {
       console.error('Failed to reopen gallery access:', err);
     }
@@ -339,11 +368,17 @@ export default function DashboardPage() {
     try {
       if (pkgForm.id) {
         await apiRequest(`/studio/packages/${pkgForm.id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(pkgForm) });
+        addToast('success', 'Paket berhasil diperbarui.');
       } else {
         await apiRequest('/studio/packages', { method: 'POST', headers: authHeaders(), body: JSON.stringify(pkgForm) });
+        addToast('success', 'Paket baru berhasil dibuat.');
       }
       setShowCreatePackage(false); setPkgForm(emptyPackageForm); await load(true); setTab('packages');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Paket gagal disimpan.'); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Paket gagal disimpan.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally {
       setCreating(false);
     }
@@ -370,7 +405,9 @@ export default function DashboardPage() {
     try {
       await reorderPackages(payload, localStorage.getItem('kleiora_token') || '');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal menyimpan urutan paket.');
+      const msg = err instanceof Error ? err.message : 'Gagal menyimpan urutan paket.';
+      setError(msg);
+      addToast('error', msg);
       load(false);
     }
   };
@@ -381,7 +418,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/packages/${id}`, { method: 'DELETE', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Paket gagal dihapus.'); setRefreshing(false); }
+      addToast('success', 'Paket berhasil dihapus.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Paket gagal dihapus.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function savePortfolio(event: FormEvent) {
@@ -390,15 +433,21 @@ export default function DashboardPage() {
     try {
       if (portfolioForm.id) {
         await apiRequest(`/studio/portfolios/${portfolioForm.id}`, { method: 'PUT', headers: authHeaders(), body: JSON.stringify(portfolioForm) });
+        addToast('success', 'Portofolio berhasil diperbarui.');
       } else {
         const paths = portfolioForm.image_path.split(',');
         for (const p of paths) {
           if (!p.trim()) continue;
           await apiRequest('/studio/portfolios', { method: 'POST', headers: authHeaders(), body: JSON.stringify({...portfolioForm, image_path: p.trim()}) });
         }
+        addToast('success', 'Portofolio baru berhasil ditambahkan.');
       }
       setShowCreatePortfolio(false); setPortfolioForm(emptyPortfolioForm); await load(true); setTab('portfolios');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Portfolio gagal disimpan.'); }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Portfolio gagal disimpan.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally { setCreating(false); }
   }
 
@@ -408,7 +457,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/portfolios/${id}`, { method: 'DELETE', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Portfolio gagal dihapus.'); setRefreshing(false); }
+      addToast('success', 'Foto portofolio berhasil dihapus.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Portfolio gagal dihapus.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function toggleReviewApproval(id: number) {
@@ -416,7 +471,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/reviews/${id}/approve`, { method: 'PATCH', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui ulasan.'); setRefreshing(false); }
+      addToast('success', 'Status persetujuan ulasan berhasil diperbarui.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal memperbarui ulasan.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function deleteReview(id: number) {
@@ -425,7 +486,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/reviews/${id}`, { method: 'DELETE', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal menghapus ulasan.'); setRefreshing(false); }
+      addToast('success', 'Ulasan berhasil dihapus.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal menghapus ulasan.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function deleteBooking(code: string) {
@@ -434,7 +501,13 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/bookings/${code}`, { method: 'DELETE', headers: authHeaders() });
       await loadBookings(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Booking gagal dihapus.'); setRefreshing(false); }
+      addToast('success', `Booking ${code} berhasil dihapus.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Booking gagal dihapus.';
+      setError(msg);
+      addToast('error', msg);
+      setRefreshing(false);
+    }
   }
 
   async function markComplete(code: string) {
@@ -442,7 +515,12 @@ export default function DashboardPage() {
     try {
       await apiRequest(`/studio/bookings/${code}/complete`, { method: 'PATCH', headers: authHeaders() });
       await load(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Gagal memperbarui status booking.'); }
+      addToast('success', `Booking ${code} ditandai selesai.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal memperbarui status booking.';
+      setError(msg);
+      addToast('error', msg);
+    }
     finally { setProcessing(''); }
   }
 
@@ -454,10 +532,12 @@ export default function DashboardPage() {
   async function copyLink(slug: string) {
     await navigator.clipboard.writeText(`${window.location.origin}/g/${slug}`);
     setCopied(slug); setTimeout(() => setCopied(''), 1800);
+    addToast('info', 'Link galeri berhasil disalin!');
   }
 
   return (
     <div className="min-h-screen bg-[#f7f6f2]">
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <header className={`sticky top-0 z-30 border-b border-[var(--line)] bg-white/90 backdrop-blur-xl transition-transform duration-300 ${headerVisible ? 'translate-y-0' : '-translate-y-full'}`}>
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
           <Link href="/" aria-label="Kleiora Grads — Beranda" className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} priority className="h-9 w-auto" /><span className="font-serif text-xl font-semibold sm:text-2xl">Kleiora<span className="text-[#a54f3b]">.grads</span></span></Link>
@@ -477,8 +557,6 @@ export default function DashboardPage() {
             <button onClick={() => setShowCreate(true)} className="btn-primary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Galeri</button>
           </div>
         </section>
-
-        {error && <div role="alert" className="mt-6 flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"><span>{error}</span><button onClick={() => setError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
 
         <section className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat icon={<ReceiptText />} label="Total booking" value={stats.total} />
@@ -749,7 +827,7 @@ function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGall
     <td className="px-4 py-4"><div className="ml-auto flex flex-nowrap justify-end gap-1.5">
       {item.payment_status === 'submitted' && !item.payment_order_id && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className={smallButton}><ExternalLink className="h-3 w-3" />Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className={`${smallButton} border-emerald-700 bg-emerald-700 text-white`}><CheckCircle2 className="h-3 w-3" />Verifikasi</button></>}
       {isCompleted ? (hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>) : hasGallery && item.payment_status === 'verified' ? <>{hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>}<button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
-      {(!item.payment_order_id || item.status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>}
+      {(!item.payment_order_id || item.status === 'expired' || item.payment_status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>}
     </div></td>
   </tr>;
 }
@@ -786,7 +864,7 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
               ) : item.payment_status === 'pending' ? (
                 <span className="text-xs text-[var(--muted)]">Menunggu pembayaran</span>
               ) : null}
-              {(!item.payment_order_id || item.status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>}
+              {(!item.payment_order_id || item.status === 'expired' || item.payment_status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>}
             </div></div></article>;
 }
 
