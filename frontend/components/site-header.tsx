@@ -7,21 +7,38 @@ import { useState, useEffect } from 'react';
 
 export function SiteHeader() {
   const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   useEffect(() => {
-    if (!open) return;
-
     const handleScroll = () => {
-      setOpen(false);
+      const currentScrollY = window.scrollY;
+
+      if (open) {
+        setOpen(false);
+      }
+
+      if (currentScrollY < 50) {
+        setVisible(true);
+      } else if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        // Scrolling down -> hide header
+        setVisible(false);
+      } else if (currentScrollY < lastScrollY) {
+        // Scrolling up -> show header
+        setVisible(true);
+      }
+
+      setLastScrollY(currentScrollY);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [open]);
+  }, [lastScrollY, open]);
+
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[color:var(--surface-glass)] backdrop-blur-xl">
+    <header className={`fixed inset-x-0 top-0 z-50 border-b border-[var(--line)] bg-[color:var(--surface-glass)] backdrop-blur-xl transition-transform duration-300 ease-in-out ${visible || open ? 'translate-y-0' : '-translate-y-full'}`}>
       <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="shrink-0" aria-label="Kleiora Grads — Beranda">
           <span className="flex items-center gap-2"><Image src="/brand/kleiora-mark-hd.png" alt="" width={1324} height={845} priority className="h-10 w-auto" /><span className="font-serif text-2xl font-semibold tracking-tight sm:text-3xl">Kleiora<span className="text-[#a54f3b]">.grads</span></span></span>
