@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, ImageIcon, Copy, Download } from 'lucide-react';
+import { ArrowLeft, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, ImageIcon, Copy, Download, AlertCircle, X } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl, API_BASE_URL } from '@/lib/api';
 import { LocationAutocomplete } from '@/components/LocationAutocomplete';
@@ -364,16 +364,43 @@ function BookingFlow() {
     setStep(1); setError('');
   }
 
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(''), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   return (
     <div className="min-h-screen bg-[var(--bg)]">
       <SiteHeader />
       <main className="mx-auto min-h-[85vh] max-w-6xl px-6 pb-24 pt-32">
+        {/* Floating Toast Notification */}
+        {error && (
+          <div
+            role="alert"
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-50 flex w-[92%] max-w-md items-center justify-between gap-3 rounded-2xl border border-red-200 bg-white/95 p-4 text-xs sm:text-sm text-red-900 shadow-2xl backdrop-blur-md border-l-4 border-l-red-500 animate-in fade-in slide-in-from-top-4"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+              <div className="font-medium leading-snug">
+                {error}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError('')}
+              className="shrink-0 rounded-full p-1 text-gray-400 hover:bg-red-50 hover:text-red-700 transition-colors"
+              aria-label="Tutup notifikasi"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <div className="mb-10 flex items-end justify-between gap-6">
           <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Booking sesi foto</p><h1 className="mt-2 font-serif text-4xl font-medium">Siapkan momen wisudamu</h1></div>
           <div className="hidden items-center gap-2 text-xs font-semibold sm:flex">{['Pricelist', 'Form Data', 'Pembayaran', 'Konfirmasi'].map((label, index) => <div key={label} className={`rounded-full px-4 py-2 ${step >= index + 1 ? 'bg-[var(--text)] text-[var(--surface)]' : 'bg-[var(--surface2)] text-[var(--muted)]'}`}>{index + 1}. {label}</div>)}</div>
         </div>
-
-        {error && <div role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
         {step === 1 && (
           <section>
