@@ -435,15 +435,16 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if paymentMethod == "" {
 		paymentMethod = "qris"
 	}
+	if paymentMethod != "qris" && paymentMethod != "transfer" && paymentMethod != "ewallet" {
+		return apiError(c, fiber.StatusBadRequest, "Metode pembayaran hanya transfer bank, e-wallet, atau QRIS")
+	}
 	var paymentOrderID *string
 	if paymentMethod == "qris" {
 		orderID := "KLR-" + bookingTokenHash("midtrans-order:" + accessToken)[:32]
 		paymentOrderID = &orderID
 	}
 	booking := models.Booking{PackageID: pkg.ID, FullName: req.FullName, CampusName: req.CampusName, WhatsApp: req.WhatsApp, SessionDate: req.SessionDate, SessionHour: req.SessionHour, SessionLocation: req.SessionLocation, PaymentType: req.PaymentType, AmountDue: amount, PaymentMethod: paymentMethod, PaymentOrderID: paymentOrderID, PaymentExpiresAt: &expiresAt, AccessTokenHash: bookingTokenHash(accessToken), PaymentStatus: "pending", Status: "pending_payment", Notes: strings.TrimSpace(req.Notes)}
-	bookingCreateMu.Lock()
 	booking.RequestID = requestID
-	defer bookingCreateMu.Unlock()
 	persistBooking := func(db *gorm.DB) error {
 		return db.Transaction(func(tx *gorm.DB) error {
 			if requestID != nil {
@@ -453,7 +454,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 					return result.Error
 				}
 				if result.RowsAffected == 1 {
-					if existing.AccessTokenHash != booking.AccessTokenHash || existing.PackageID != booking.PackageID || existing.FullName != booking.FullName || existing.CampusName != booking.CampusName || existing.WhatsApp != booking.WhatsApp || existing.SessionDate != booking.SessionDate || existing.SessionHour != booking.SessionHour || existing.SessionLocation != booking.SessionLocation || existing.PaymentType != booking.PaymentType || existing.AmountDue != booking.AmountDue || existing.Notes != booking.Notes {
+					if existing.AccessTokenHash != booking.AccessTokenHash || existing.PackageID != booking.PackageID || existing.FullName != booking.FullName || existing.CampusName != booking.CampusName || existing.WhatsApp != booking.WhatsApp || existing.SessionDate != booking.SessionDate || existing.SessionHour != booking.SessionHour || existing.SessionLocation != booking.SessionLocation || existing.PaymentType != booking.PaymentType || existing.AmountDue != booking.AmountDue || existing.Notes != booking.Notes || existing.PaymentMethod != booking.PaymentMethod {
 						return fiber.NewError(409, "Permintaan booking sudah dipakai dengan data lain")
 					}
 					booking = existing
@@ -475,28 +476,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 			return tx.Create(&booking).Error
 		})
 	}
-	if h.db.Dialector.Name() == "mysql" {
-		bookingYear := strings.SplitN(req.SessionDate, "-", 2)[0]
-		lockName := fmt.Sprintf("kleiora-booking-year-%s", bookingYear)
-		err = h.db.Connection(func(conn *gorm.DB) error {
-			var acquired int
-			if lockErr := conn.Raw("SELECT GET_LOCK(?, 10)", lockName).Scan(&acquired).Error; lockErr != nil {
-				return lockErr
-			}
-			if acquired != 1 {
-				return errSlotBusy
-			}
-			defer func() {
-				var released int
-				if releaseErr := conn.Raw("SELECT RELEASE_LOCK(?)", lockName).Scan(&released).Error; releaseErr != nil || released != 1 {
-					log.Printf("failed to release annual booking-sequence lock %s: %v", lockName, releaseErr)
-				}
-			}()
-			return persistBooking(conn)
-		})
-	} else {
-		err = persistBooking(h.db)
-	}
+	err = h.withBookingYearLock(req.SessionDate, persistBooking)
 	if err != nil {
 		var httpError *fiber.Error
 		if errors.As(err, &httpError) {
@@ -598,6 +578,13 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	if booking.PaymentStatus == "verified" || booking.Status == "completed" {
 		return apiError(c, fiber.StatusConflict, "Payment for this booking is already finalized")
 	}
+	if booking.Status != "pending_payment" || booking.PaymentStatus != "pending" || (booking.PaymentExpiresAt != nil && !booking.PaymentExpiresAt.After(time.Now())) {
+		return apiError(c, fiber.StatusConflict, "Bukti sudah dikirim atau reservasi telah berakhir. Hubungi admin jika sudah membayar")
+	}
+	method := strings.ToLower(strings.TrimSpace(c.FormValue("payment_method")))
+	if (method != "transfer" && method != "ewallet") || (booking.PaymentMethod != "" && method != booking.PaymentMethod) {
+		return apiError(c, fiber.StatusBadRequest, "Metode bukti pembayaran harus sesuai dengan booking")
+	}
 	file, err := c.FormFile("proof")
 	if err != nil || file.Size > 5*1024*1024 {
 		return apiError(c, fiber.StatusBadRequest, "A JPG or PNG payment proof up to 5 MB is required")
@@ -626,26 +613,35 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 	if err := c.SaveFile(file, path); err != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to store payment proof")
 	}
-	method := strings.TrimSpace(c.FormValue("payment_method"))
 	proofVersion, err := randomToken(16)
 	if err != nil {
 		_ = os.Remove(path)
 		return apiError(c, fiber.StatusInternalServerError, "Failed to version payment proof")
 	}
-	result := h.db.Model(&models.Booking{}).
-		Where("id = ? AND payment_status <> ? AND status <> ?", booking.ID, "verified", "completed").
-		Updates(map[string]any{"payment_proof_path": path, "payment_proof_version": proofVersion, "payment_method": method, "payment_status": "submitted"})
-	if result.Error != nil {
+	err = h.withBookingYearLock(booking.SessionDate, func(db *gorm.DB) error {
+		return db.Transaction(func(tx *gorm.DB) error {
+			result := tx.Model(&models.Booking{}).
+				Where("id = ? AND payment_order_id IS NULL AND payment_status = ? AND status = ? AND (payment_expires_at IS NULL OR payment_expires_at > ?)", booking.ID, "pending", "pending_payment", time.Now()).
+				Updates(map[string]any{"payment_proof_path": path, "payment_proof_version": proofVersion, "payment_method": method, "payment_status": "submitted"})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return fiber.NewError(fiber.StatusConflict, "Status booking berubah atau reservasi berakhir. Periksa booking sebelum mengirim ulang")
+			}
+			message := fmt.Sprintf("Bukti pembayaran diterima — MENUNGGU VERIFIKASI ADMIN\nBelum dinyatakan lunas / terkonfirmasi\nKode: %s\nKlien: %s\nWhatsApp: %s\nPaket: %s\nMetode: %s\nTipe: %s\nTagihan: Rp %s\nSesi: %s %s.00 WITA\nLokasi: %s", booking.Code, booking.FullName, booking.WhatsApp, booking.Package.Name, method, booking.PaymentType, services.FormatPaymentAmount(booking.AmountDue), booking.SessionDate, booking.SessionHour, booking.SessionLocation)
+			return tx.Create(&models.PaymentNotice{BookingID: booking.ID, Message: message}).Error
+		})
+	})
+	if err != nil {
 		_ = os.Remove(path)
-		return apiError(c, fiber.StatusInternalServerError, "Failed to update payment status")
+		var httpError *fiber.Error
+		if errors.As(err, &httpError) {
+			return httpError
+		}
+		return apiError(c, fiber.StatusInternalServerError, "Failed to submit payment proof")
 	}
-	if result.RowsAffected != 1 {
-		_ = os.Remove(path)
-		return apiError(c, fiber.StatusConflict, "Payment for this booking is already finalized")
-	}
-
-	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
-
+	h.events.Broadcast("booking_updated")
 	return c.JSON(fiber.Map{"message": "Payment proof submitted for admin verification", "payment_status": "submitted"})
 }
 
@@ -805,8 +801,8 @@ func (h *Handler) VerifyBookingPayment(c *fiber.Ctx) error {
 	}
 	now := time.Now()
 	result := h.db.Model(&models.Booking{}).
-		Where("id = ? AND payment_status = ? AND payment_proof_version = ?", booking.ID, "submitted", proofVersion).
-		Updates(map[string]any{"payment_status": "verified", "status": "confirmed", "verified_at": &now})
+		Where("id = ? AND payment_order_id IS NULL AND status = ? AND payment_status = ? AND payment_proof_version = ?", booking.ID, "pending_payment", "submitted", proofVersion).
+		Updates(map[string]any{"payment_status": "verified", "status": "confirmed", "paid_amount": booking.AmountDue, "verified_at": &now})
 	if result.Error != nil {
 		return apiError(c, fiber.StatusInternalServerError, "Failed to verify payment")
 	}
@@ -1058,6 +1054,9 @@ func (h *Handler) DeleteBooking(c *fiber.Ctx) error {
 			if err := tx.Where("id IN ?", galleryIDs).Delete(&models.Gallery{}).Error; err != nil {
 				return err
 			}
+		}
+		if err := tx.Where("booking_id = ?", booking.ID).Delete(&models.PaymentNotice{}).Error; err != nil {
+			return err
 		}
 		if err := tx.Unscoped().Where("id = ?", booking.ID).Delete(&models.Booking{}).Error; err != nil {
 			return err

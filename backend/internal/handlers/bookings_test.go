@@ -33,7 +33,7 @@ func bookingTestApp(t *testing.T) (*fiber.App, *gorm.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Package{}, &models.BookingSequence{}, &models.Booking{}, &models.PaymentNotice{}, &models.Gallery{}, &models.Photo{}, &models.Selection{}); err != nil {
 		t.Fatal(err)
 	}
 	pkg := models.Package{Code: "premium", Name: "Premium", Price: 1250000, DurationHours: 3, LocationCount: 3, EditedPhotos: 60, IsActive: true}

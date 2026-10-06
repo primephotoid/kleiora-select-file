@@ -285,6 +285,7 @@ func main() {
 	api.Get("/availability", h.GetAvailability)
 	api.Post("/bookings", h.CreateBooking)
 	api.Get("/bookings/:code", h.GetBooking)
+	api.Post("/bookings/:code/payment-proof", h.UploadPaymentProof)
 	api.Post("/bookings/:code/qris", h.CreateQRIS)
 	api.Get("/bookings/:code/payment", h.GetPayment)
 	api.Get("/bookings/:code/qris.png", h.QRISImage)

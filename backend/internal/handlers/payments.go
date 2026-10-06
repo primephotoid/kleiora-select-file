@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"kleiora-backend/internal/models"
@@ -15,10 +16,37 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// Proof submission and booking creation share the lock so a slot cannot be
+// reassigned while a timely manual proof is being committed near its deadline.
+func (h *Handler) withBookingYearLock(date string, persist func(*gorm.DB) error) error {
+	bookingCreateMu.Lock()
+	defer bookingCreateMu.Unlock()
+	if h.db.Dialector.Name() != "mysql" {
+		return persist(h.db)
+	}
+	lockName := "kleiora-booking-year-" + strings.SplitN(date, "-", 2)[0]
+	return h.db.Connection(func(conn *gorm.DB) error {
+		var acquired int
+		if err := conn.Raw("SELECT GET_LOCK(?, 10)", lockName).Scan(&acquired).Error; err != nil {
+			return err
+		}
+		if acquired != 1 {
+			return errSlotBusy
+		}
+		defer func() {
+			var released int
+			if err := conn.Raw("SELECT RELEASE_LOCK(?)", lockName).Scan(&released).Error; err != nil || released != 1 {
+				log.Printf("failed to release annual booking-sequence lock %s: %v", lockName, err)
+			}
+		}()
+		return persist(conn)
+	})
+}
+
 func occupiedBookings(db *gorm.DB, date, hour string) *gorm.DB {
 	return db.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ?", date, hour).
 		Where("status NOT IN ?", []string{"cancelled", "expired", "payment_review"}).
-		Where("status <> ? OR payment_expires_at IS NULL OR payment_expires_at > ?", "pending_payment", time.Now())
+		Where("status <> ? OR payment_status <> ? OR payment_expires_at IS NULL OR payment_expires_at > ?", "pending_payment", "pending", time.Now())
 }
 
 func (h *Handler) paymentBooking(c *fiber.Ctx) (*models.Booking, error) {
@@ -235,7 +263,7 @@ func (h *Handler) StartPaymentWorker() {
 
 func (h *Handler) ProcessPayments() {
 	now := time.Now()
-	h.db.Model(&models.Booking{}).Where("payment_order_id IS NOT NULL AND payment_status = ? AND status = ? AND payment_expires_at <= ?", "pending", "pending_payment", now).Updates(map[string]any{"status": "expired"})
+	h.db.Model(&models.Booking{}).Where("payment_status = ? AND status = ? AND payment_expires_at <= ?", "pending", "pending_payment", now).Updates(map[string]any{"status": "expired"})
 	// Reconcile interrupted requests and delayed webhooks. Older paid/expired
 	// orders remain in the database and can still receive signed webhooks.
 	var bookings []models.Booking

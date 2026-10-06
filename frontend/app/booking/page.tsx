@@ -53,6 +53,7 @@ function BookingFlow() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [mounted, setMounted] = useState(false);
   const bookingCode = booking?.code;
+  const bookingDetails = booking ?? form;
 
   useEffect(() => {
     if (!proof) {
@@ -139,19 +140,22 @@ function BookingFlow() {
     return () => clearInterval(timer);
   }, [booking?.payment_expires_at, step]);
 
-  // QRIS Payment Polling
+  // Recover saved bookings and track both manual review and QRIS payments.
   useEffect(() => {
-    if (!mounted || !bookingCode || !bookingAccessToken || step !== 3 || paymentMethod !== 'qris' || !booking?.payment_order_id) return;
+    if (!mounted || !bookingCode || !bookingAccessToken || (step !== 3 && !(step === 4 && booking?.payment_status === 'submitted'))) return;
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const result = await apiRequest<{ booking: BookingItem; qr_available: boolean }>(`/bookings/${bookingCode}/payment`, { headers: { 'X-Booking-Token': bookingAccessToken } });
+        const headers = { 'X-Booking-Token': bookingAccessToken };
+        const result = paymentMethod === 'qris'
+          ? await apiRequest<{ booking: BookingItem; qr_available: boolean }>(`/bookings/${bookingCode}/payment`, { headers })
+          : { booking: await apiRequest<BookingItem>(`/bookings/${bookingCode}`, { headers }), qr_available: false };
         if (stopped) return;
         setBooking(result.booking);
         setQRAvailable(result.qr_available);
-        if (['verified', 'payment_review', 'refunded'].includes(result.booking.payment_status)) {
+        if (['submitted', 'verified', 'payment_review', 'refunded'].includes(result.booking.payment_status)) {
           setStep(4);
-          return;
+          if (result.booking.payment_status !== 'submitted') return;
         }
       } catch (err) {
         if (!stopped) setError(err instanceof Error ? err.message : 'Status pembayaran belum dapat diperiksa.');
@@ -160,7 +164,7 @@ function BookingFlow() {
     }
     poll();
     return () => { stopped = true; clearTimeout(timer); };
-  }, [mounted, bookingCode, bookingAccessToken, step, paymentMethod, booking?.payment_order_id]);
+  }, [mounted, bookingCode, bookingAccessToken, step, paymentMethod, booking?.payment_status]);
 
   // Load QRIS PNG image
   useEffect(() => {
@@ -253,7 +257,7 @@ function BookingFlow() {
   }
 
   async function createBooking() {
-    if (form.payment_type === 'dp_custom' && (!Number.isInteger(form.custom_dp_amount) || form.custom_dp_amount < 50000 || form.custom_dp_amount > (selectedPackage?.price || 0))) {
+    if (!booking && form.payment_type === 'dp_custom' && (!Number.isInteger(form.custom_dp_amount) || form.custom_dp_amount < 50000 || form.custom_dp_amount > (selectedPackage?.price || 0))) {
       setError('DP custom minimal Rp50.000 dan tidak boleh melebihi harga paket.');
       return;
     }
@@ -285,7 +289,7 @@ function BookingFlow() {
       }
     } else {
       // Manual payment (transfer or ewallet)
-      if (!proof && !booking?.payment_proof_path) {
+      if (booking && !proof) {
         setError('Silakan upload bukti pembayaran terlebih dahulu.');
         return;
       }
@@ -305,6 +309,8 @@ function BookingFlow() {
           activeAccessToken = result.access_token;
           setBooking(activeBooking);
           setBookingAccessToken(activeAccessToken);
+          if (['submitted', 'verified'].includes(activeBooking.payment_status)) setStep(4);
+          return;
         }
         if (proof) {
           const body = new FormData();
@@ -313,6 +319,8 @@ function BookingFlow() {
           await apiRequest(`/bookings/${activeBooking.code}/payment-proof`, {
             method: 'POST', headers: { 'X-Booking-Token': activeAccessToken }, body
           });
+          setBooking({ ...activeBooking, payment_status: 'submitted' });
+          setProof(null);
         }
         setStep(4);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -509,17 +517,17 @@ function BookingFlow() {
                 </div>
                 <hr className="my-4 border-[var(--line)]" />
                 <div className="grid grid-cols-[80px_1fr] gap-y-2 text-xs">
-                  <span className="text-[var(--muted)]">Nama</span><span className="text-right font-medium">{form.full_name}</span>
-                  <span className="text-[var(--muted)]">Kampus</span><span className="text-right font-medium">{form.campus_name}</span>
-                  <span className="text-[var(--muted)]">No. WA</span><span className="text-right font-medium">{form.whatsapp}</span>
-                  <span className="text-[var(--muted)]">Tanggal</span><span className="text-right font-medium">{form.session_date ? new Date(form.session_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</span>
-                  <span className="text-[var(--muted)]">Jam</span><span className="text-right font-medium">{form.session_hour}.00 WITA</span>
-                  <span className="text-[var(--muted)]">Lokasi</span><span className="text-right font-medium">{form.session_location}</span>
-                  <span className="text-[var(--muted)]">Opsi Bayar</span><span className="text-right font-medium">{form.payment_type === 'dp' ? 'Down Payment (Setengah Harga)' : form.payment_type === 'dp_custom' ? 'DP Custom' : 'Full Payment (Lunas)'}</span>
+                  <span className="text-[var(--muted)]">Nama</span><span className="text-right font-medium">{bookingDetails.full_name}</span>
+                  <span className="text-[var(--muted)]">Kampus</span><span className="text-right font-medium">{bookingDetails.campus_name}</span>
+                  <span className="text-[var(--muted)]">No. WA</span><span className="text-right font-medium">{bookingDetails.whatsapp}</span>
+                  <span className="text-[var(--muted)]">Tanggal</span><span className="text-right font-medium">{bookingDetails.session_date ? new Date(bookingDetails.session_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</span>
+                  <span className="text-[var(--muted)]">Jam</span><span className="text-right font-medium">{bookingDetails.session_hour}.00 WITA</span>
+                  <span className="text-[var(--muted)]">Lokasi</span><span className="text-right font-medium">{bookingDetails.session_location}</span>
+                  <span className="text-[var(--muted)]">Opsi Bayar</span><span className="text-right font-medium">{bookingDetails.payment_type === 'dp' ? 'Down Payment (Setengah Harga)' : bookingDetails.payment_type === 'dp_custom' ? 'DP Custom' : 'Pembayaran Penuh'}</span>
                 </div>
                 <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--surface2)] p-3 text-sm font-bold">
                   <span>Harus Bayar</span>
-                  <span className="text-[var(--gold-dark)]">{formatRupiah(form.payment_type === 'dp' ? selectedPackage.price / 2 : form.payment_type === 'dp_custom' ? form.custom_dp_amount : selectedPackage.price)}</span>
+                  <span className="text-[var(--gold-dark)]">{formatRupiah(booking?.amount_due ?? (form.payment_type === 'dp' ? Math.floor(selectedPackage.price / 2) : form.payment_type === 'dp_custom' ? form.custom_dp_amount : selectedPackage.price))}</span>
                 </div>
               </div>
             </aside>
@@ -630,51 +638,16 @@ function BookingFlow() {
                   )}
                   {booking && <p className="mt-4 text-xs text-[var(--muted)]">Periksa status pembayaran secara berkala atau biarkan halaman ini terbuka untuk verifikasi otomatis.</p>}
 
-                  {/* Ubah metode pembayaran */}
-                  {booking && !['verified', 'payment_review'].includes(booking.payment_status) && (
-                    <div className="mt-5 border-t border-[var(--line)] pt-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBooking(null);
-                          setBookingAccessToken('');
-                          setQRAvailable(false);
-                          setQRImage('');
-                          setProof(null);
-                          setProofPreview('');
-                        }}
-                        className="inline-flex items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2 text-xs font-semibold text-[var(--text)] transition hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" /> Ubah Metode Pembayaran
-                      </button>
-                    </div>
-                  )}
+                  {booking && <p className="mt-4 text-xs text-[var(--muted)]">Metode pembayaran terkunci untuk booking ini agar tidak terjadi pembayaran ganda.</p>}
                 </div>
               )}
 
               {/* Rincian Transfer Bank / E-Wallet Manual */}
-              {(paymentMethod === 'transfer' || paymentMethod === 'ewallet') && (
+              {!booking && paymentMethod !== 'qris' && <p className="mt-6 text-sm text-[var(--muted)]">Klik reservasi terlebih dahulu untuk memastikan slot tersedia dan melihat tujuan pembayaran. Batas pengiriman bukti adalah 30 menit sejak reservasi berhasil.</p>}
+              {booking && paymentMethod !== 'qris' && timeLeft === 0 && booking.payment_status === 'pending' && <p className="mt-6 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-800">Reservasi berakhir. Jangan transfer untuk booking ini. Jika sudah membayar, hubungi admin dengan kode {booking.code} sebelum membuat booking baru.</p>}
+              {booking && booking.status === 'pending_payment' && timeLeft > 0 && (paymentMethod === 'transfer' || paymentMethod === 'ewallet') && (
                 <div className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--surface2)] p-5 sm:p-6">
-                  {/* Ubah metode pembayaran (manual) */}
-                  {booking && !['verified', 'payment_review'].includes(booking.payment_status) && (
-                    <div className="mb-5 flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3">
-                      <div className="flex-1 text-xs text-[var(--muted)]">
-                        Sudah booking dengan metode ini. Ingin pakai metode lain?
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBooking(null);
-                          setBookingAccessToken('');
-                          setProof(null);
-                          setProofPreview('');
-                        }}
-                        className="flex shrink-0 items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface2)] px-3 py-2 text-xs font-semibold text-[var(--text)] transition hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" /> Ubah Metode
-                      </button>
-                    </div>
-                  )}
+                  <p className="mb-5 text-xs text-[var(--muted)]">Kode: {booking.code} · Sisa waktu: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s. Metode pembayaran terkunci. Kirim bukti sebelum reservasi berakhir; hubungi admin jika sudah membayar tetapi tidak dapat mengunggah.</p>
                   {paymentMethod === 'transfer' && (
                     <>
                       <h3 className="mb-4 font-bold">Detail Rekening Transfer Bank</h3>
@@ -818,7 +791,7 @@ function BookingFlow() {
 
               {/* Action Buttons */}
               <div className="mt-8 flex flex-wrap gap-3">
-                <button onClick={() => setStep(2)} disabled={submitting} className="btn-secondary px-6 py-3">Kembali</button>
+                {!booking && <button onClick={() => setStep(2)} disabled={submitting} className="btn-secondary px-6 py-3">Kembali</button>}
                 
                 {paymentMethod === 'qris' ? (
                   <>
@@ -835,12 +808,12 @@ function BookingFlow() {
                     )}
                   </>
                 ) : (
-                  <button onClick={createBooking} disabled={submitting || (!proof && !booking?.payment_proof_path)} className="btn-primary flex-1 px-6 py-3 disabled:opacity-50">
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ''}Konfirmasi & Unggah Bukti
+                  <button onClick={createBooking} disabled={submitting || processingProof || !requestID || (!!booking && (!proof || booking.payment_status !== 'pending' || booking.status !== 'pending_payment' || timeLeft === 0))} className="btn-primary flex-1 px-6 py-3 disabled:opacity-50">
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ''}{booking ? 'Kirim Bukti untuk Verifikasi' : 'Reservasi & Lihat Tujuan Pembayaran'}
                   </button>
                 )}
 
-                {booking && timeLeft === 0 && (
+                {booking && timeLeft === 0 && booking.payment_status === 'pending' && (
                   <button onClick={() => setShowNewBooking(true)} className="btn-secondary px-6 py-3">Booking Baru</button>
                 )}
               </div>
@@ -855,19 +828,20 @@ function BookingFlow() {
               {booking.payment_status === 'verified' ? 'Pembayaran diterima' : 'Booking tercatat'}
             </p>
             <h2 className="mt-1 font-serif text-2xl sm:text-4xl">
-              {booking.payment_status === 'verified' ? 'Booking terkonfirmasi' : 'Menunggu verifikasi pembayaran'}
+              {booking.payment_status === 'verified' ? 'Booking terkonfirmasi' : ['payment_review', 'refunded'].includes(booking.payment_status) ? 'Pembayaran perlu ditinjau' : 'Menunggu verifikasi pembayaran'}
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-[var(--muted)]">
               {booking.payment_status === 'verified' 
-                ? (booking.payment_type === 'full' ? 'Pembayaran penuh telah diterima via QRIS.' : 'DP telah diterima via QRIS.') 
-                : 'Simpan kode booking berikut. Slotmu akan dikonfirmasi setelah admin memeriksa bukti pembayaran.'}
+                ? (booking.payment_type === 'full' ? 'Pembayaran penuh telah diverifikasi.' : 'DP telah diverifikasi. Sisa pembayaran belum termasuk.')
+                : ['payment_review', 'refunded'].includes(booking.payment_status) ? 'Hubungi admin untuk memeriksa jadwal dan status pembayaran. Jangan membayar ulang.'
+                : 'Bukti pembayaran berhasil dikirim. Slot ditahan selama pemeriksaan; booking dikonfirmasi setelah admin memverifikasi pembayaran.'}
             </p>
             <div className="my-4 rounded-xl bg-[var(--surface2)] p-4">
               <p className="text-xs uppercase tracking-wider text-[var(--muted)]">Kode booking</p>
               <p className="mt-1 overflow-x-auto whitespace-nowrap font-mono text-base font-bold sm:text-xl">{booking.code}</p>
               <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-left text-sm">
                 <Detail label="Paket" value={booking.package.name}/>
-                <Detail label="Total dibayar" value={formatRupiah(booking.paid_amount || booking.amount_due)}/>
+                <Detail label={booking.payment_status === 'submitted' ? 'Nominal diajukan' : 'Nominal terverifikasi'} value={formatRupiah(booking.payment_status === 'submitted' ? booking.amount_due : (booking.paid_amount || 0))}/>
                 <Detail label="Tanggal" value={booking.session_date}/>
                 <Detail label="Jam" value={`${booking.session_hour}.00 WITA`}/>
               </div>

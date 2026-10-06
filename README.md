@@ -96,7 +96,7 @@ Hasil dump tersimpan di `backend/database/dumps/kleiora-YYYYMMDD-HHMMSS.sql`. Fi
 
 ## Catatan pembayaran
 
-Pembayaran baru menggunakan **QRIS direct Midtrans Core API saja**. Pelanggan memilih pembayaran penuh/DP, membuat QRIS, lalu dapat mengunduh PNG untuk dipindai dari aplikasi bank/e-wallet. Tidak ada upload bukti pembayaran untuk booking baru. Bukti manual lama masih dapat dilihat dan diverifikasi admin.
+Pembayaran tersedia melalui **transfer bank manual, e-wallet manual, dan QRIS direct Midtrans Core API**. Transfer/e-wallet membutuhkan bukti JPG/PNG maksimal 5 MB yang disimpan privat dan diverifikasi admin. Upload bukti tidak menyatakan pembayaran lunas. Bukti yang berhasil dikirim menahan slot sampai diperiksa admin; booking manual tanpa bukti berakhir setelah 30 menit. Admin perlu rutin memeriksa atau menghapus booking manual yang bukti pembayarannya tidak valid agar slot kembali tersedia. QRIS diverifikasi otomatis oleh Midtrans dan PNG-nya dapat diunduh. Metode terkunci setelah booking dibuat; QRIS tidak menerima upload bukti atau verifikasi manual.
 
 Konfigurasi backend/server (jangan simpan server key di frontend atau Git):
 
