@@ -22,17 +22,20 @@ import (
 
 var ErrMidtransNotFound = errors.New("midtrans order not found")
 
+const MaxQRISAmount int64 = 10_000_000
+
 type MidtransPayment struct {
-	OrderID       string `json:"order_id"`
-	TransactionID string `json:"transaction_id"`
-	Status        string `json:"transaction_status"`
-	StatusCode    string `json:"status_code"`
-	Amount        string `json:"gross_amount"`
-	Currency      string `json:"currency"`
-	PaymentType   string `json:"payment_type"`
-	FraudStatus   string `json:"fraud_status"`
-	Signature     string `json:"signature_key"`
-	Actions       []struct {
+	OrderID        string `json:"order_id"`
+	TransactionID  string `json:"transaction_id"`
+	Status         string `json:"transaction_status"`
+	StatusCode     string `json:"status_code"`
+	Amount         string `json:"gross_amount"`
+	Currency       string `json:"currency"`
+	PaymentType    string `json:"payment_type"`
+	FraudStatus    string `json:"fraud_status"`
+	Signature      string `json:"signature_key"`
+	SettlementTime string `json:"settlement_time"`
+	Actions        []struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
 	} `json:"actions"`
@@ -84,7 +87,10 @@ func (m *Midtrans) request(method, path string, body any) (*MidtransPayment, err
 	if resp.StatusCode == 404 || payment.StatusCode == "404" {
 		return nil, ErrMidtransNotFound
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || (payment.StatusCode != "200" && payment.StatusCode != "201") {
+	// 202 describes a processed but unsuccessful transaction, not an API
+	// transport failure. Never accept it as evidence of successful payment.
+	terminal202 := payment.StatusCode == "202" && (payment.Status == "expire" || payment.Status == "deny" || payment.Status == "cancel" || payment.Status == "failure")
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || (payment.StatusCode != "200" && payment.StatusCode != "201" && !terminal202) {
 		return nil, fmt.Errorf("Midtrans rejected request (%d/%s)", resp.StatusCode, payment.StatusCode)
 	}
 	return &payment, nil
@@ -95,6 +101,9 @@ func (m *Midtrans) Status(order string) (*MidtransPayment, error) {
 }
 
 func (m *Midtrans) Charge(b models.Booking) (*MidtransPayment, error) {
+	if b.AmountDue < 1 || b.AmountDue > MaxQRISAmount {
+		return nil, errors.New("Nominal QRIS harus Rp1 sampai Rp10.000.000 per transaksi")
+	}
 	return m.request(http.MethodPost, "/v2/charge", map[string]any{
 		"payment_type": "qris", "qris": map[string]string{"acquirer": "gopay"},
 		"transaction_details": map[string]any{"order_id": *b.PaymentOrderID, "gross_amount": b.AmountDue},

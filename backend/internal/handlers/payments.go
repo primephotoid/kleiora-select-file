@@ -73,6 +73,9 @@ func (h *Handler) CreateQRIS(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	if b.AmountDue < 1 || b.AmountDue > services.MaxQRISAmount {
+		return apiError(c, fiber.StatusBadRequest, "Nominal QRIS harus Rp1 sampai Rp10.000.000 per transaksi. Hubungi admin untuk booking ini")
+	}
 	if h.midtrans.ServerKey == "" {
 		return apiError(c, 503, "Pembayaran QRIS belum dikonfigurasi")
 	}
@@ -231,7 +234,23 @@ func (h *Handler) applyPayment(tx *gorm.DB, b *models.Booking, p services.Midtra
 			kind = "DP diterima (bukan pelunasan)"
 		}
 		if paymentStatus == "payment_review" {
-			kind = "Pembayaran diterima setelah reservasi berakhir — PERIKSA JADWAL / REFUND"
+			kind = "Pembayaran terverifikasi; booking belum terkonfirmasi — PERIKSA JADWAL / REFUND"
+		}
+		// Use provider settlement time, not webhook arrival time. A timely
+		// payment must still be reviewed if its slot has already been released.
+		wib := time.FixedZone("WIB", 7*3600)
+		settledAt, timeErr := time.ParseInLocation("2006-01-02 15:04:05", p.SettlementTime, wib)
+		if timeErr == nil && !settledAt.After(now) {
+			kind += "\nWaktu pembayaran menurut Midtrans: " + settledAt.Format("2006-01-02 15:04:05") + " WIB"
+			if paymentStatus == "payment_review" && b.PaymentExpiresAt != nil {
+				if settledAt.Before(*b.PaymentExpiresAt) {
+					kind += "\nPembayaran tercatat sebelum batas reservasi; konfirmasi diproses ketika reservasi tidak lagi aktif"
+				} else {
+					kind += "\nPembayaran tercatat pada/setelah batas reservasi"
+				}
+			}
+		} else if paymentStatus == "payment_review" {
+			kind += "\nWaktu pembayaran belum diketahui; tidak dapat menyimpulkan pelanggan terlambat membayar"
 		}
 		message := fmt.Sprintf("Pembayaran QRIS terkonfirmasi otomatis\n%s\nKode: %s\nKlien: %s\nWhatsApp: %s\nNominal diterima: Rp %s\nSesi: %s %s.00 WITA\nLokasi: %s\nOrder: %s", kind, b.Code, b.FullName, b.WhatsApp, services.FormatPaymentAmount(b.AmountDue), b.SessionDate, b.SessionHour, b.SessionLocation, *b.PaymentOrderID)
 		return tx.Create(&models.PaymentNotice{BookingID: b.ID, Message: message}).Error

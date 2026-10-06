@@ -438,6 +438,9 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	if paymentMethod != "qris" && paymentMethod != "transfer" && paymentMethod != "ewallet" {
 		return apiError(c, fiber.StatusBadRequest, "Metode pembayaran hanya transfer bank, e-wallet, atau QRIS")
 	}
+	if paymentMethod == "qris" && amount > services.MaxQRISAmount {
+		return apiError(c, fiber.StatusBadRequest, "Maksimal pembayaran QRIS Rp10.000.000 per transaksi. Pilih DP sesuai batas atau gunakan transfer bank/e-wallet manual")
+	}
 	var paymentOrderID *string
 	if paymentMethod == "qris" {
 		orderID := "KLR-" + bookingTokenHash("midtrans-order:" + accessToken)[:32]

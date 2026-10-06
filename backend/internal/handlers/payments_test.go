@@ -204,6 +204,83 @@ func TestExpiredReservationReleasesSlotAndLatePaymentNeedsReview(t *testing.T) {
 	}
 }
 
+func TestQRISTerminal202ReconcilesWithoutSuccessfulNotice(t *testing.T) {
+	for _, status := range []string{"expire", "deny", "cancel", "failure"} {
+		t.Run(status, func(t *testing.T) {
+			app, db, h, b, _ := qrisTest(t)
+			h.midtrans.HTTP.Transport = paymentTransport(func(r *http.Request) (*http.Response, error) {
+				p := providerPayment(b, status)
+				p.StatusCode = "202"
+				return providerResponse(p, 200), nil
+			})
+			n := signedNotification(b, status)
+			n.StatusCode = "202"
+			sum := sha512.Sum512([]byte(n.OrderID + n.StatusCode + n.Amount + "test-key"))
+			n.Signature = hex.EncodeToString(sum[:])
+			for i := 0; i < 2; i++ {
+				if resp := paymentRequest(t, app, "POST", "/payments/midtrans-notification", "", n); resp.StatusCode != 200 {
+					t.Fatal(resp.StatusCode)
+				}
+			}
+			db.First(&b, b.ID)
+			if b.Status != "expired" || b.PaymentStatus != "expired" || b.PaidAmount != 0 {
+				t.Fatal("terminal 202 not persisted correctly")
+			}
+			var count int64
+			db.Model(&models.PaymentNotice{}).Count(&count)
+			if count != 0 {
+				t.Fatal("failed transaction generated a success notice")
+			}
+		})
+	}
+}
+
+func TestDelayedSettlementNoticeUsesProviderTimeAndDoesNotReclaimSlot(t *testing.T) {
+	wib := time.FixedZone("WIB", 7*3600)
+	deadline := time.Now().Add(-5 * time.Minute).Truncate(time.Second)
+	for _, tc := range []struct{ name, settled, want string }{
+		{"timely_payment", deadline.Add(-time.Minute).In(wib).Format("2006-01-02 15:04:05"), "Pembayaran tercatat sebelum batas reservasi"},
+		{"late_payment", deadline.Add(time.Minute).In(wib).Format("2006-01-02 15:04:05"), "Pembayaran tercatat pada/setelah batas reservasi"},
+		{"at_deadline", deadline.In(wib).Format("2006-01-02 15:04:05"), "Pembayaran tercatat pada/setelah batas reservasi"},
+		{"missing_time", "", "Waktu pembayaran belum diketahui"},
+		{"invalid_time", "not-a-date", "Waktu pembayaran belum diketahui"},
+		{"future_time", time.Now().Add(time.Hour).In(wib).Format("2006-01-02 15:04:05"), "Waktu pembayaran belum diketahui"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, db, h, b, _ := qrisTest(t)
+			createBookingForTest(t, app, "Second Client")
+			if err := db.Model(&b).Updates(map[string]any{"payment_expires_at": deadline, "status": "expired"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if resp := postBooking(t, app, "Replacement Client"); resp.StatusCode != 201 {
+				t.Fatal("released slot not reusable")
+			}
+			h.midtrans.HTTP.Transport = paymentTransport(func(r *http.Request) (*http.Response, error) {
+				p := providerPayment(b, "settlement")
+				p.SettlementTime = tc.settled
+				return providerResponse(p, 200), nil
+			})
+			n := signedNotification(b, "settlement")
+			// Only the authenticated Get Status response controls the timing label.
+			n.SettlementTime = deadline.Add(time.Hour).In(wib).Format("2006-01-02 15:04:05")
+			for i := 0; i < 2; i++ {
+				if resp := paymentRequest(t, app, "POST", "/payments/midtrans-notification", "", n); resp.StatusCode != 200 {
+					t.Fatal(resp.StatusCode)
+				}
+			}
+			db.First(&b, b.ID)
+			if b.Status != "payment_review" || b.PaymentStatus != "payment_review" || b.PaidAmount != b.AmountDue {
+				t.Fatal("released booking automatically reclaimed a slot or lost payment")
+			}
+			var notices []models.PaymentNotice
+			db.Find(&notices)
+			if len(notices) != 1 || !strings.Contains(notices[0].Message, tc.want) || !strings.Contains(notices[0].Message, "booking belum terkonfirmasi") {
+				t.Fatal("incorrect or duplicate delayed payment notice", notices)
+			}
+		})
+	}
+}
+
 func TestQRISCannotBeManuallyVerifiedCompletedOrDeleted(t *testing.T) {
 	app, _, _, b, token := qrisTest(t)
 	for _, path := range []string{"/studio/bookings/" + b.Code + "/verify-payment", "/studio/bookings/" + b.Code + "/complete"} {
@@ -266,5 +343,61 @@ func TestBookingRequestRetryIsIdempotent(t *testing.T) {
 	request["full_name"] = "Changed Client"
 	if resp := paymentRequest(t, app, "POST", "/bookings", "", request); resp.StatusCode != 409 {
 		t.Fatal("idempotency key reused for different booking")
+	}
+}
+
+func TestQRISAmountLimitBeforeReservation(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, paymentType string
+		price, customDP           int64
+		want                      int
+	}{
+		{"full_at_limit", "qris", "full", 10_000_000, 0, 201},
+		{"full_over_limit", "qris", "full", 10_000_001, 0, 400},
+		{"default_method_over_limit", "", "full", 10_000_001, 0, 400},
+		{"dp_at_limit", "qris", "dp", 20_000_000, 0, 201},
+		{"dp_over_limit", "qris", "dp", 20_000_002, 0, 400},
+		{"custom_dp_at_limit", "qris", "dp_custom", 25_000_000, 10_000_000, 201},
+		{"custom_dp_over_limit", "qris", "dp_custom", 25_000_000, 10_000_001, 400},
+		{"transfer_not_limited", "transfer", "full", 25_000_000, 0, 201},
+		{"ewallet_not_limited", "ewallet", "full", 25_000_000, 0, 201},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app, db := bookingTestApp(t)
+			if err := db.Model(&models.Package{}).Where("code = ?", "premium").Update("price", tc.price).Error; err != nil {
+				t.Fatal(err)
+			}
+			request := manualBookingRequest(tc.method)
+			request["payment_type"], request["custom_dp_amount"] = tc.paymentType, tc.customDP
+			// Client-supplied nominal must not bypass the server's package calculation.
+			request["amount_due"] = 1
+			resp := paymentRequest(t, app, "POST", "/bookings", "", request)
+			if resp.StatusCode != tc.want {
+				t.Fatalf("got %d, want %d", resp.StatusCode, tc.want)
+			}
+			var bookings, sequences int64
+			db.Model(&models.Booking{}).Count(&bookings)
+			db.Model(&models.BookingSequence{}).Count(&sequences)
+			if tc.want == 400 && (bookings != 0 || sequences != 0) {
+				t.Fatal("rejected QRIS consumed a reservation or booking sequence")
+			}
+			if tc.want == 201 && bookings != 1 {
+				t.Fatal("valid payment did not create booking")
+			}
+		})
+	}
+}
+
+func TestLegacyQRISOverLimitDoesNotContactProvider(t *testing.T) {
+	app, db, h, b, token := qrisTest(t)
+	if err := db.Model(&b).Update("amount_due", 10_000_001).Error; err != nil {
+		t.Fatal(err)
+	}
+	h.midtrans.HTTP.Transport = paymentTransport(func(r *http.Request) (*http.Response, error) {
+		t.Fatal("oversized booking contacted Midtrans")
+		return nil, nil
+	})
+	if resp := paymentRequest(t, app, "POST", "/bookings/"+b.Code+"/qris", token, nil); resp.StatusCode != 400 {
+		t.Fatal(resp.StatusCode)
 	}
 }
