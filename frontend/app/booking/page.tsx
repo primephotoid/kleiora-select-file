@@ -635,27 +635,32 @@ function BookingFlow() {
               )}
 
               {/* Pilih Metode Pembayaran */}
-              {!booking && (
-                <div className="mt-8">
-                  <h3 className="mb-4 font-bold">Pilih Metode Pembayaran</h3>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {[
-                      { id: 'qris', title: 'QRIS Otomatis', desc: 'Instant & Konfirmasi Otomatis', icon: <QrCode className="h-6 w-6 text-[var(--gold-dark)]" /> },
-                      { id: 'transfer', title: 'Transfer Bank', desc: 'BCA, Mandiri, BRI, SeaBank', icon: <Landmark className="h-6 w-6" /> },
-                      { id: 'ewallet', title: 'E-Wallet', desc: 'DANA, ShopeePay, OVO', icon: <Wallet className="h-6 w-6" /> }
-                    ].map(method => (
-                      <label key={method.id} className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors ${paymentMethod === method.id ? 'border-[var(--text)] bg-[var(--surface2)] shadow-sm' : 'border-[var(--line)] hover:border-[var(--text)]'}`}>
-                        <input type="radio" className="hidden" checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} />
-                        <div className="flex shrink-0 items-center justify-center">{method.icon}</div>
-                        <div>
-                          <p className="font-bold text-sm">{method.title}</p>
-                          <p className="text-xs text-[var(--muted)]">{method.desc}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+              <div className="mt-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold">Pilih Metode Pembayaran</h3>
+                  {booking && (
+                    <span className="text-xs font-semibold text-[var(--gold-dark)]">
+                      Bisa diganti jika bermasalah
+                    </span>
+                  )}
                 </div>
-              )}
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {[
+                    { id: 'qris', title: 'QRIS Otomatis', desc: 'Instant & Konfirmasi Otomatis', icon: <QrCode className="h-6 w-6 text-[var(--gold-dark)]" /> },
+                    { id: 'transfer', title: 'Transfer Bank', desc: 'BCA, Mandiri, BRI, SeaBank', icon: <Landmark className="h-6 w-6" /> },
+                    { id: 'ewallet', title: 'E-Wallet', desc: 'DANA, ShopeePay, OVO', icon: <Wallet className="h-6 w-6" /> }
+                  ].map(method => (
+                    <label key={method.id} className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors ${paymentMethod === method.id ? 'border-[var(--text)] bg-[var(--surface2)] shadow-sm ring-1 ring-[var(--text)]' : 'border-[var(--line)] hover:border-[var(--text)]'}`}>
+                      <input type="radio" className="hidden" checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} />
+                      <div className="flex shrink-0 items-center justify-center">{method.icon}</div>
+                      <div>
+                        <p className="font-bold text-sm">{method.title}</p>
+                        <p className="text-xs text-[var(--muted)]">{method.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               {/* Rincian QRIS */}
               {paymentMethod === 'qris' && (
@@ -682,7 +687,7 @@ function BookingFlow() {
                   )}
                   {booking && <p className="mt-4 text-xs text-[var(--muted)]">Periksa status pembayaran secara berkala atau biarkan halaman ini terbuka untuk verifikasi otomatis.</p>}
 
-                  {booking && <p className="mt-4 text-xs text-[var(--muted)]">Metode pembayaran terkunci untuk booking ini agar tidak terjadi pembayaran ganda.</p>}
+                  {booking && <p className="mt-4 text-xs text-[var(--muted)]">Jika QRIS kendala/tidak muncul, pilih <strong>Transfer Bank</strong> atau <strong>E-Wallet</strong> di atas untuk kirim bukti bayar manual.</p>}
                 </div>
               )}
 
@@ -848,6 +853,11 @@ function BookingFlow() {
                     {booking && (
                       <button onClick={checkPayment} disabled={submitting} className="btn-secondary px-6 py-3">
                         {submitting && <Loader2 className="h-4 w-4 animate-spin" />}Periksa Pembayaran
+                      </button>
+                    )}
+                    {booking && (
+                      <button onClick={() => setPaymentMethod('transfer')} className="btn-secondary px-6 py-3">
+                        Ganti ke Transfer / E-Wallet
                       </button>
                     )}
                   </>
