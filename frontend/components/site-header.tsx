@@ -74,6 +74,8 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  const [showTerms, setShowTerms] = useState(false);
+
   return (
     <footer className="border-t border-[var(--line)] bg-[var(--surface)] py-12">
       <div className="mx-auto flex max-w-6xl flex-col justify-between gap-8 px-6 sm:flex-row">
@@ -83,9 +85,52 @@ export function SiteFooter() {
         </div>
         <div className="text-sm text-[var(--muted)] sm:text-right">
           <p>Berbasis di Makassar · Melayani berbagai kota di Indonesia</p>
-          <p className="mt-2">© 2026 Kleiora.grads x <Link href="/studio/login" className="hover:text-[var(--text)]">Primephoto.id</Link></p>
+          <div className="mt-2 flex flex-wrap items-center gap-4 sm:justify-end">
+            <button type="button" onClick={() => setShowTerms(true)} className="text-xs font-semibold text-[var(--gold-dark)] hover:underline">
+              Syarat & Ketentuan (S&K)
+            </button>
+            <span>·</span>
+            <p>© 2026 Kleiora.grads x <Link href="/studio/login" className="hover:text-[var(--text)]">Primephoto.id</Link></p>
+          </div>
         </div>
       </div>
+
+      {showTerms && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4">
+              <h3 className="font-bold text-lg">Syarat & Ketentuan (S&K)</h3>
+              <button type="button" onClick={() => setShowTerms(false)} className="rounded-full p-1 hover:bg-[var(--surface2)]" aria-label="Tutup">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6 text-sm text-[var(--muted)] space-y-3 leading-relaxed">
+              <p className="font-semibold text-[var(--text)]">💳 Ketentuan Pembayaran & Transaksi</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><strong>DP Non-Refundable:</strong> Uang Muka (DP) bersifat final dan tidak dapat dikembalikan jika terjadi pembatalan sepihak dari klien.</li>
+                <li><strong>Transaksi Melalui Admin:</strong> Tidak ada transaksi on the spot (di lokasi foto), setiap transaksi melalui admin.</li>
+              </ul>
+              <hr className="border-[var(--line)]" />
+              <p className="font-semibold text-[var(--text)]">⚠️ Ketentuan Pembatalan & Lokasi</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Pembatalan di Lokasi:</strong> Apabila fotografer (FG) sudah sampai di lokasi dan klien membatalkan secara sepihak, maka klien wajib melakukan <em>full payment</em> (pelunasan penuh).</li>
+                <li><strong>Biaya Lokasi Foto:</strong> Apabila client request lokasi yang dikenakan pembayaran, maka pembayaran lokasi ditanggung full client (wisudawan/i).</li>
+              </ul>
+              <hr className="border-[var(--line)]" />
+              <p className="font-semibold text-[var(--text)]">⏰ Ketentuan Jadwal & Waktu Sesi</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Reschedule Jadwal:</strong> Permintaan ubah jadwal foto maksimal H-3 sebelum sesi berlangsung (tergantung ketersediaan slot).</li>
+                <li><strong>Keterlambatan:</strong> Hadir terlambat lebih dari 15 menit akan mengurangi durasi sesi foto tanpa kompensasi penambahan waktu.</li>
+              </ul>
+            </div>
+            <div className="border-t border-[var(--line)] px-6 py-3 text-right bg-[var(--surface)]">
+              <button type="button" onClick={() => setShowTerms(false)} className="btn-primary px-5 py-2 text-xs">
+                Saya Mengerti
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </footer>
   );
 }
