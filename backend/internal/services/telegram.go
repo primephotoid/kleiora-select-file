@@ -75,6 +75,15 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 		sessionDateFmt = fmt.Sprintf("%s/%s/%s", parts[2], parts[1], parts[0])
 	}
 
+	totalPrice := booking.Package.Price
+	if totalPrice < booking.AmountDue {
+		totalPrice = booking.AmountDue
+	}
+	sisaTagihan := totalPrice - booking.AmountDue
+	if booking.PaymentType == "full" || sisaTagihan < 0 {
+		sisaTagihan = 0
+	}
+
 	message := fmt.Sprintf(
 		"● *Booking Baru Diterima!*\n\n"+
 			"*Kode:* `%s`\n"+
@@ -82,23 +91,28 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 			"*Kampus:* %s\n"+
 			"*WhatsApp:* %s\n"+
 			"*Paket:* %s\n"+
+			"*Total Paket:* Rp %s\n"+
+			"*Tipe Bayar:* %s\n"+
+			"*Nominal DP:* Rp %s\n"+
+			"*Sisa Tagihan:* Rp %s\n"+
 			"*Tanggal Foto:* %s\n"+
 			"*Jam Sesi:* %s:00 WITA\n"+
 			"*Lokasi:* %s\n"+
-			"*Tipe Bayar:* %s\n"+
-			"*Total Tagihan:* Rp %s\n"+
 			"*Catatan:* %s\n\n"+
+			"📌 *S&K:* DP non-refundable | Transaksi via Admin | Pembatalan saat FG di lokasi wajib Full Payment | Biaya lokasi berbayar ditanggung client.\n"+
 			"Silakan cek panel admin untuk memverifikasi pembayaran.",
 		booking.Code,
 		booking.FullName,
 		booking.CampusName,
 		booking.WhatsApp,
 		packageName,
+		formatRupiah(totalPrice),
+		paymentTypeLabel,
+		formatRupiah(booking.AmountDue),
+		formatRupiah(sisaTagihan),
 		sessionDateFmt,
 		booking.SessionHour,
 		booking.SessionLocation,
-		paymentTypeLabel,
-		formatRupiah(booking.AmountDue),
 		notes,
 	)
 

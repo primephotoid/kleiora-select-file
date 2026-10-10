@@ -838,6 +838,22 @@ function BookingFlow() {
                 </div>
               )}
 
+              {/* Syarat & Ketentuan (S&K) */}
+              <div className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5 text-xs text-[var(--muted)] space-y-2">
+                <div className="flex items-center gap-2 font-bold text-[var(--text)] text-sm">
+                  <AlertCircle className="h-4 w-4 text-[var(--gold-dark)]" />
+                  <span>Syarat & Ketentuan (S&K) Pembayaran & Sesi Foto</span>
+                </div>
+                <ul className="list-disc pl-5 space-y-1.5 leading-relaxed">
+                  <li><strong>DP Non-Refundable:</strong> Uang Muka (DP) bersifat final dan tidak dapat dikembalikan jika terjadi pembatalan sepihak dari klien.</li>
+                  <li><strong>Transaksi Melalui Admin:</strong> Tidak ada transaksi on the spot (di lokasi foto), setiap transaksi melalui admin.</li>
+                  <li><strong>Pembatalan di Lokasi:</strong> Apabila fotografer (FG) sudah sampai di lokasi dan klien membatalkan secara sepihak, maka klien wajib melakukan <em>full payment</em> (pelunasan penuh).</li>
+                  <li><strong>Biaya Lokasi Foto:</strong> Apabila client request lokasi yang dikenakan pembayaran, maka pembayaran lokasi ditanggung full client (wisudawan/i).</li>
+                  <li><strong>Reschedule Jadwal:</strong> Permintaan ubah jadwal foto maksimal H-3 sebelum sesi berlangsung (tergantung ketersediaan slot).</li>
+                  <li><strong>Keterlambatan:</strong> Hadir terlambat lebih dari 15 menit akan mengurangi durasi sesi foto tanpa kompensasi penambahan waktu.</li>
+                </ul>
+              </div>
+
               {/* Action Buttons */}
               <div className="mt-8 flex flex-wrap gap-3">
                 {!booking && <button onClick={() => setStep(2)} disabled={submitting} className="btn-secondary px-6 py-3">Kembali</button>}

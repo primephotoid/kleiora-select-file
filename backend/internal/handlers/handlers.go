@@ -498,6 +498,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 	}
 	h.db.Preload("Package").First(&booking, booking.ID)
 	h.events.Broadcast("booking_created")
+	go services.SendTelegramBookingNotification(booking, booking.Package.Name)
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "Booking created; payment verification is pending", "booking": booking, "access_token": accessToken})
 }
 
@@ -635,7 +636,52 @@ func (h *Handler) UploadPaymentProof(c *fiber.Ctx) error {
 			if result.RowsAffected != 1 {
 				return fiber.NewError(fiber.StatusConflict, "Status booking berubah atau reservasi berakhir. Periksa booking sebelum mengirim ulang")
 			}
-			message := fmt.Sprintf("Bukti pembayaran diterima — MENUNGGU VERIFIKASI ADMIN\nBelum dinyatakan lunas / terkonfirmasi\nKode: %s\nKlien: %s\nWhatsApp: %s\nPaket: %s\nMetode: %s\nTipe: %s\nTagihan: Rp %s\nSesi: %s %s.00 WITA\nLokasi: %s", booking.Code, booking.FullName, booking.WhatsApp, booking.Package.Name, method, booking.PaymentType, services.FormatPaymentAmount(booking.AmountDue), booking.SessionDate, booking.SessionHour, booking.SessionLocation)
+			totalPrice := booking.Package.Price
+			if totalPrice < booking.AmountDue {
+				totalPrice = booking.AmountDue
+			}
+			sisaTagihan := totalPrice - booking.AmountDue
+			if booking.PaymentType == "full" || sisaTagihan < 0 {
+				sisaTagihan = 0
+			}
+
+			paymentTypeLabel := "Full Payment (Lunas)"
+			if booking.PaymentType == "dp" {
+				paymentTypeLabel = "Down Payment (Setengah Harga)"
+			} else if booking.PaymentType == "dp_custom" {
+				paymentTypeLabel = "Down Payment (Nominal Custom)"
+			}
+
+			ocrNotice := services.DetectNominalFromReceipt(path, booking.AmountDue)
+
+			message := fmt.Sprintf(
+				"Bukti pembayaran diterima — MENUNGGU VERIFIKASI ADMIN\n"+
+					"Belum dinyatakan lunas / terkonfirmasi\n"+
+					"Kode: %s\n"+
+					"Klien: %s\n"+
+					"WhatsApp: %s\n"+
+					"Paket: %s (Total Paket: Rp %s)\n"+
+					"Metode: %s\n"+
+					"Tipe Bayar: %s\n"+
+					"Nominal DP: Rp %s\n"+
+					"Sisa Tagihan: Rp %s\n"+
+					"Sesi: %s %s.00 WITA\n"+
+					"Lokasi: %s\n"+
+					"📌 Catatan S&K: DP non-refundable | Transaksi via Admin | Pembatalan saat FG di lokasi wajib Full Payment | Biaya lokasi berbayar ditanggung client.%s",
+				booking.Code,
+				booking.FullName,
+				booking.WhatsApp,
+				booking.Package.Name,
+				services.FormatPaymentAmount(totalPrice),
+				method,
+				paymentTypeLabel,
+				services.FormatPaymentAmount(booking.AmountDue),
+				services.FormatPaymentAmount(sisaTagihan),
+				booking.SessionDate,
+				booking.SessionHour,
+				booking.SessionLocation,
+				ocrNotice,
+			)
 			return tx.Create(&models.PaymentNotice{BookingID: booking.ID, Message: message}).Error
 		})
 	})
