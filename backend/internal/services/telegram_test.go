@@ -48,3 +48,24 @@ func TestBuildGallerySelectionMessagesStaysBelowTelegramLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatRupiah(t *testing.T) {
+	cases := []struct {
+		input    int64
+		expected string
+	}{
+		{0, "0"},
+		{500, "500"},
+		{1000, "1.000"},
+		{50000, "50.000"},
+		{500000, "500.000"},
+		{1250000, "1.250.000"},
+		{10000000, "10.000.000"},
+		{-50000, "-50.000"},
+	}
+	for _, c := range cases {
+		if got := formatRupiah(c.input); got != c.expected {
+			t.Errorf("formatRupiah(%d) = %q; want %q", c.input, got, c.expected)
+		}
+	}
+}

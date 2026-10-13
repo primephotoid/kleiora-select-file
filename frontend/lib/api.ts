@@ -135,8 +135,14 @@ export async function uploadPortfolioImage(file: File | Blob, token: string): Pr
   });
 }
 
-export function formatRupiah(value: number) {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
+export function formatRupiah(value: number | undefined | null) {
+  const num = typeof value === 'number' ? value : Number(value) || 0;
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num);
+}
+
+export function formatNumber(value: number | undefined | null): string {
+  const num = typeof value === 'number' ? value : Number(value) || 0;
+  return new Intl.NumberFormat('id-ID').format(num);
 }
 
 export interface PathCount {

@@ -148,6 +148,9 @@ func SendTelegramBookingNotification(booking models.Booking, packageName string)
 }
 
 func formatRupiah(amount int64) string {
+	if amount < 0 {
+		return "-" + formatRupiah(-amount)
+	}
 	s := fmt.Sprintf("%d", amount)
 	n := len(s)
 	result := ""

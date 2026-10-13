@@ -166,7 +166,7 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
                 <Eye className="h-4 w-4 text-amber-600" />
                 <div>
                   <div className="text-[10px] font-medium text-gray-500">Total Tayangan</div>
-                  <div className="text-sm font-bold text-gray-900">{peakOverall.total_views} kali</div>
+                  <div className="text-sm font-bold text-gray-900">{peakOverall.total_views.toLocaleString('id-ID')} kali</div>
                 </div>
               </div>
               <div className="h-7 w-[1px] bg-amber-200/80" />
@@ -174,7 +174,7 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
                 <Users className="h-4 w-4 text-emerald-600" />
                 <div>
                   <div className="text-[10px] font-medium text-gray-500">Pengunjung</div>
-                  <div className="text-sm font-bold text-gray-900">{peakOverall.unique_visits} klien</div>
+                  <div className="text-sm font-bold text-gray-900">{peakOverall.unique_visits.toLocaleString('id-ID')} klien</div>
                 </div>
               </div>
             </div>
@@ -256,7 +256,7 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
             </div>
             {filteredData.length > 0 && (
               <div className="text-[10px] text-gray-500 mt-0.5">
-                {monthlyTotals.views} tayangan · {monthlyTotals.visitors} pengunjung unik
+                {monthlyTotals.views.toLocaleString('id-ID')} tayangan · {monthlyTotals.visitors.toLocaleString('id-ID')} pengunjung unik
               </div>
             )}
           </div>
@@ -306,9 +306,9 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
                 <div className="inline-flex items-center gap-3 rounded-lg bg-gray-900 px-3.5 py-1.5 text-xs text-white shadow-md">
                   <span className="font-semibold text-amber-300">{formatDateFull(activeHoverItem.date)}</span>
                   <span className="text-gray-400">|</span>
-                  <span>Tayangan: <strong className="text-amber-400">{activeHoverItem.total_views}</strong></span>
+                  <span>Tayangan: <strong className="text-amber-400">{activeHoverItem.total_views.toLocaleString('id-ID')}</strong></span>
                   <span className="text-gray-400">|</span>
-                  <span>Pengunjung: <strong className="text-emerald-400">{activeHoverItem.unique_visits}</strong></span>
+                  <span>Pengunjung: <strong className="text-emerald-400">{activeHoverItem.unique_visits.toLocaleString('id-ID')}</strong></span>
                 </div>
               ) : (
                 <span className="text-[11px] text-gray-400">Arahkan kursor ke batang grafik untuk melihat detail tanggal</span>
@@ -320,10 +320,10 @@ export function DailyTrafficChart({ data = [] }: DailyTrafficChartProps) {
               {/* Y-Axis Grid Lines */}
               <div className="absolute inset-x-0 top-6 bottom-8 flex flex-col justify-between pointer-events-none">
                 <div className="w-full border-b border-dashed border-gray-100 flex justify-end">
-                  <span className="text-[10px] text-gray-400 -mt-2.5 bg-white px-1">{maxVal}</span>
+                  <span className="text-[10px] text-gray-400 -mt-2.5 bg-white px-1">{maxVal.toLocaleString('id-ID')}</span>
                 </div>
                 <div className="w-full border-b border-dashed border-gray-100 flex justify-end">
-                  <span className="text-[10px] text-gray-400 -mt-2.5 bg-white px-1">{Math.round(maxVal / 2)}</span>
+                  <span className="text-[10px] text-gray-400 -mt-2.5 bg-white px-1">{Math.round(maxVal / 2).toLocaleString('id-ID')}</span>
                 </div>
                 <div className="w-full border-b border-gray-200 flex justify-end">
                   <span className="text-[10px] text-gray-400 -mt-2.5 bg-white px-1">0</span>

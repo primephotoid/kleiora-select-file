@@ -97,6 +97,9 @@ function BookingFlow() {
         if (saved.requestID) setRequestID(saved.requestID);
       } else if (saved?.form) {
         setForm(saved.form);
+        if (saved.form.custom_dp_amount) {
+          setDpRawInput(saved.form.custom_dp_amount.toLocaleString('id-ID'));
+        }
         setSelectedCode(saved.selectedCode || '');
         if (saved.paymentMethod) setPaymentMethod(saved.paymentMethod);
         if (saved.requestID) setRequestID(saved.requestID);

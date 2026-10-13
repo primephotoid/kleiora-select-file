@@ -88,7 +88,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
                   <Star className="h-5 w-5 fill-current" />
                 </div>
                 <span className="font-bold text-lg">{averageRating}</span>
-                <span className="text-sm text-gray-500">dari {totalReviews} ulasan</span>
+                <span className="text-sm text-gray-500">dari {totalReviews.toLocaleString('id-ID')} ulasan</span>
               </div>
             )}
           </div>
