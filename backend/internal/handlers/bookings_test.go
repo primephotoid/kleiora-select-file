@@ -655,3 +655,42 @@ func TestMarkGallerySent(t *testing.T) {
 		t.Fatalf("expected status to be active after re-sending, got %s", updated.Status)
 	}
 }
+
+func TestRescheduleBooking(t *testing.T) {
+	app, db := bookingTestApp(t)
+	h := NewHandler(db, &config.Config{JWTSecret: "secret"}, services.NewDriveService(""))
+	app.Patch("/studio/bookings/:code/reschedule", h.RescheduleBooking)
+
+	resp := postBookingAt(t, app, "Reschedule User", "2099-09-01", "08")
+	var created struct {
+		Booking struct {
+			Code string `json:"code"`
+		} `json:"booking"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reschedule to a new date and hour
+	body, _ := json.Marshal(map[string]string{
+		"session_date":     "2099-09-02",
+		"session_hour":     "14",
+		"session_location": "Pantai Losari",
+	})
+	req := httptest.NewRequest(http.MethodPatch, "/studio/bookings/"+created.Booking.Code+"/reschedule", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resResp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", resResp.StatusCode)
+	}
+
+	var updated models.Booking
+	db.Where("code = ?", created.Booking.Code).First(&updated)
+	if updated.SessionDate != "2099-09-02" || updated.SessionHour != "14" || updated.SessionLocation != "Pantai Losari" {
+		t.Fatalf("reschedule mismatch: date=%s hour=%s loc=%s", updated.SessionDate, updated.SessionHour, updated.SessionLocation)
+	}
+}
+

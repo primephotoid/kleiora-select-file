@@ -33,7 +33,7 @@ interface BookingSummary { total: number; needs_action: number; confirmed: numbe
 interface ConfirmationRequest { title: string; description: string; confirmLabel?: string; resolve: (confirmed: boolean) => void }
 
 const emptyGalleryForm = { title: '', drive_url: '', client_name: '', client_email: '', booking_id: '', max_selection: 0 };
-const emptyPackageForm = { id: 0, code: '', name: '', description: '', price: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true, sort_order: 0 };
+const emptyPackageForm: PackageItem = { id: 0, code: '', name: '', description: '', price: 0, price_out_of_town: 0, duration_hours: 1, duration_label: '', location_count: 1, edited_photos: 20, includes_print: '', includes_teaser: false, image_path: '', is_active: true, sort_order: 0 };
 const emptyPortfolioForm = { id: 0, title: '', image_path: '', is_active: true, sort_order: 0 };
 
 export default function DashboardPage() {
@@ -76,11 +76,12 @@ export default function DashboardPage() {
   const [pkgForm, setPkgForm] = useState<PackageItem>(emptyPackageForm as PackageItem);
   const [portfolioForm, setPortfolioForm] = useState<PortfolioItem>(emptyPortfolioForm as PortfolioItem);
   const [showCreatePortfolio, setShowCreatePortfolio] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState<BookingItem | null>(null);
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [headerVisible, setHeaderVisible] = useState(true);
   const lastScrollY = useRef(0);
 
-  useBodyScrollLock(Boolean(showCreate || showCreatePackage || showCreatePortfolio || paymentProofPreview));
+  useBodyScrollLock(Boolean(showCreate || showCreatePackage || showCreatePortfolio || paymentProofPreview || rescheduleTarget));
 
   useEffect(() => {
     const handleScroll = () => {
@@ -524,6 +525,40 @@ export default function DashboardPage() {
     finally { setProcessing(''); }
   }
 
+  async function handleReschedule(newDate: string, newHour: string, newLocation: string, notifyWa: boolean) {
+    if (!rescheduleTarget) return;
+    const target = rescheduleTarget;
+    setProcessing(`reschedule-${target.code}`);
+    try {
+      await apiRequest<{ message: string; booking: BookingItem }>(`/studio/bookings/${target.code}/reschedule`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          session_date: newDate,
+          session_hour: newHour,
+          session_location: newLocation,
+        }),
+      });
+      addToast('success', `Jadwal sesi foto ${target.full_name} (${target.code}) berhasil diubah!`);
+      setRescheduleTarget(null);
+      await loadBookings(true);
+
+      if (notifyWa) {
+        const whatsapp = target.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
+        const formattedDate = new Date(`${newDate}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        const message = `Halo kak *${target.full_name}*, jadwal sesi foto wisuda kakak bersama Kleiora.grads (*Kode: ${target.code}*) telah berhasil kami perbarui:\n\n*Jadwal Baru Sesi Foto:*\n● Hari/Tanggal: ${formattedDate}\n● Waktu: ${newHour}.00 WITA\n● Lokasi: ${newLocation}\n● Paket: ${target.package?.name || 'Paket Foto'}\n\nMohon pastikan hadir 10–15 menit sebelum waktu sesi dimulai ya kak. Sampai jumpa di lokasi! ✨`;
+        window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Gagal memperbarui jadwal booking.';
+      setError(msg);
+      addToast('error', msg);
+      throw err;
+    } finally {
+      setProcessing('');
+    }
+  }
+
   async function logout() {
     try { await apiRequest('/auth/logout', { method: 'POST' }); } catch { /* tetap bersihkan sesi lokal */ }
     localStorage.removeItem('kleiora_token'); localStorage.removeItem('kleiora_user'); router.replace('/studio/login'); router.refresh();
@@ -607,14 +642,25 @@ export default function DashboardPage() {
                               📍 {b.session_location}
                             </div>
                           </div>
-                          <a
-                            href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="shrink-0 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs flex items-center gap-1"
-                          >
-                            Chat WA Klien
-                          </a>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setRescheduleTarget(b)}
+                              className="rounded-lg border border-amber-300 bg-amber-100/90 px-2.5 py-1.5 text-[11px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs flex items-center gap-1"
+                              title="Ubah jadwal sesi foto"
+                            >
+                              <CalendarDays className="h-3 w-3" />
+                              Ubah
+                            </button>
+                            <a
+                              href={`https://wa.me/${b.whatsapp.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-emerald-700 shadow-2xs flex items-center gap-1"
+                            >
+                              Chat WA
+                            </a>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -631,6 +677,7 @@ export default function DashboardPage() {
               bookings={bookings} meta={bookingMeta} processing={processing} sort={bookingSort} sortDirection={bookingSortDirection}
               onSort={column => { if (bookingSort === column) setBookingSortDirection(value => value === 'asc' ? 'desc' : 'asc'); else { setBookingSort(column); setBookingSortDirection('asc'); } setBookingPage(1); }}
               onVerify={verify} onViewProof={viewProof} onDelete={deleteBooking} onComplete={markComplete} onSendGallery={sendGallery}
+              onReschedule={item => setRescheduleTarget(item)}
               onCreateGallery={item => { setForm({ ...emptyGalleryForm, booking_id: String(item.id), title: `Foto Wisuda — ${item.full_name}`, client_name: item.full_name }); setShowCreate(true); }}
               onPageChange={setBookingPage} perPage={bookingPerPage} onPerPageChange={value => { setBookingPage(1); setBookingPerPage(value); }}
             />
@@ -720,6 +767,7 @@ export default function DashboardPage() {
       {showCreatePackage && <CreatePackageModal form={pkgForm} setForm={setPkgForm} creating={creating} onClose={() => !creating && setShowCreatePackage(false)} onSubmit={savePackage} />}
       {showCreatePortfolio && <CreatePortfolioModal form={portfolioForm} setForm={setPortfolioForm} creating={creating} onClose={() => !creating && setShowCreatePortfolio(false)} onSubmit={savePortfolio} />}
       {paymentProofPreview && <PaymentProofModal code={paymentProofPreview.code} url={paymentProofPreview.url} processing={processing} onClose={() => setPaymentProofPreview(null)} onVerify={() => { const code = paymentProofPreview.code; setPaymentProofPreview(null); verify(code); }} />}
+      {rescheduleTarget && <RescheduleModal booking={rescheduleTarget} onClose={() => setRescheduleTarget(null)} onSubmit={handleReschedule} isSubmitting={processing.startsWith('reschedule-')} />}
       <ConfirmDialog open={!!confirmation} title={confirmation?.title || ''} description={confirmation?.description || ''} confirmLabel={confirmation?.confirmLabel} onCancel={() => resolveConfirmation(false)} onConfirm={() => resolveConfirmation(true)} />
       <style jsx global>{`.admin-field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.admin-field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}`}</style>
     </div>
@@ -748,11 +796,221 @@ function PaymentProofModal({ code, url, processing, onClose, onVerify }: { code:
   </div>;
 }
 
+function todayInMakassar() {
+  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+interface RescheduleSlot {
+  hour: string;
+  remaining: number;
+  available: boolean;
+}
+
+function RescheduleModal({
+  booking,
+  onClose,
+  onSubmit,
+  isSubmitting,
+}: {
+  booking: BookingItem;
+  onClose: () => void;
+  onSubmit: (newDate: string, newHour: string, newLocation: string, notifyWa: boolean) => Promise<void>;
+  isSubmitting: boolean;
+}) {
+  const [date, setDate] = useState(booking.session_date);
+  const [hour, setHour] = useState(booking.session_hour);
+  const [location, setLocation] = useState(booking.session_location);
+  const [notifyWa, setNotifyWa] = useState(true);
+  const [slots, setSlots] = useState<RescheduleSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [error, setError] = useState('');
+
+  const minDate = useMemo(() => todayInMakassar(), []);
+
+  useEffect(() => {
+    if (!date) {
+      setSlots([]);
+      return;
+    }
+    setLoadingSlots(true);
+    setError('');
+    apiRequest<{ slots: RescheduleSlot[] }>(`/availability?date=${date}`)
+      .then(res => {
+        setSlots(res.slots || []);
+      })
+      .catch(err => {
+        setSlots([]);
+        setError(err instanceof Error ? err.message : 'Gagal memuat ketersediaan slot');
+      })
+      .finally(() => setLoadingSlots(false));
+  }, [date]);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!date || !hour) {
+      setError('Pilih tanggal dan jam sesi.');
+      return;
+    }
+    try {
+      await onSubmit(date, hour, location, notifyWa);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal mengubah jadwal');
+    }
+  };
+
+  const hasChanges = date !== booking.session_date || hour !== booking.session_hour || location !== booking.session_location;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center overflow-hidden overscroll-none bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onMouseDown={e => e.target === e.currentTarget && !isSubmitting && onClose()}
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-3xl bg-white p-6 shadow-2xl sm:max-w-xl sm:rounded-3xl sm:p-8"
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--gold-dark)]">Reschedule Jadwal</p>
+            <h2 className="mt-1 font-serif text-2xl sm:text-3xl font-medium">Ubah Jadwal Sesi Foto</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-full border border-[var(--line)] p-2 hover:bg-[var(--surface2)] transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Current info card */}
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-bold text-amber-950 text-sm">{booking.full_name}</span>
+            <span className="font-mono text-[11px] font-semibold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">{booking.code}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-amber-900">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-amber-700 block">Paket:</span>
+              <span className="font-semibold">{booking.package?.name}</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-amber-700 block">Jadwal Saat Ini:</span>
+              <span className="font-semibold">{formatDate(booking.session_date)} · {booking.session_hour}.00 WITA</span>
+            </div>
+            <div className="col-span-2">
+              <span className="text-[10px] uppercase font-bold text-amber-700 block">Lokasi Saat Ini:</span>
+              <span className="font-semibold truncate block">{booking.session_location}</span>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700 flex items-start gap-2">
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="mt-5 space-y-4">
+          <Field label="Pilih Tanggal Sesi Baru">
+            <input
+              type="date"
+              required
+              min={minDate}
+              value={date}
+              onChange={e => {
+                const newD = e.target.value;
+                setDate(newD);
+                if (newD !== booking.session_date) {
+                  setHour('');
+                } else {
+                  setHour(booking.session_hour);
+                }
+              }}
+              className="admin-field"
+            />
+          </Field>
+
+          <Field label="Pilih Jam Sesi Baru (WITA)">
+            <select
+              required
+              disabled={!date || loadingSlots}
+              value={hour}
+              onChange={e => setHour(e.target.value)}
+              className="admin-field"
+            >
+              <option value="">{loadingSlots ? 'Memeriksa ketersediaan slot...' : 'Pilih jam sesi'}</option>
+              {slots.map(s => {
+                const isCurrent = date === booking.session_date && s.hour === booking.session_hour;
+                const canSelect = s.available || isCurrent;
+                return (
+                  <option key={s.hour} value={s.hour} disabled={!canSelect}>
+                    {s.hour}.00 WITA
+                    {isCurrent ? ' (Jadwal saat ini)' : s.available ? ` (${s.remaining} slot tersisa)` : ' — Penuh'}
+                  </option>
+                );
+              })}
+            </select>
+          </Field>
+
+          <Field label="Lokasi Sesi Foto">
+            <input
+              type="text"
+              required
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              placeholder="Contoh: Menara Pinisi UNM / Studio Kleiora"
+              className="admin-field"
+            />
+          </Field>
+
+          <div className="rounded-xl border border-[var(--line)] bg-[var(--surface2)]/60 p-3.5">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifyWa}
+                onChange={e => setNotifyWa(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-[var(--gold)] focus:ring-[var(--gold)]"
+              />
+              <span className="text-xs font-semibold text-gray-800">
+                Kirim pesan konfirmasi perubahan jadwal ke WhatsApp klien setelah disimpan
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-7 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="btn-secondary flex-1 px-5 py-3.5 text-sm"
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || !hasChanges || !hour}
+            className="btn-primary flex-[1.5] px-5 py-3.5 text-sm disabled:opacity-50"
+          >
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {isSubmitting ? 'Menyimpan Jadwal...' : 'Simpan Jadwal Baru'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 interface BookingTableProps {
   bookings: BookingItem[]; meta: BookingMeta; processing: string; sort: BookingSort; sortDirection: 'asc' | 'desc'; perPage: number;
   onSort: (column: BookingSort) => void; onVerify: (code: string) => void; onViewProof: (code: string) => void;
   onCreateGallery: (item: BookingItem) => void; onDelete: (code: string) => void; onComplete: (code: string) => void;
   onSendGallery: (item: BookingItem) => void;
+  onReschedule: (item: BookingItem) => void;
   onPageChange: (page: number) => void; onPerPageChange: (perPage: number) => void;
 }
 
@@ -782,7 +1040,7 @@ function BookingTable(props: BookingTableProps) {
       </table>
     </div>
     <div className="mt-4 space-y-3 lg:hidden">
-      {bookings.map(item => <BookingCard key={item.id} item={item} processing={props.processing} onVerify={props.onVerify} onViewProof={props.onViewProof} onDelete={props.onDelete} onComplete={props.onComplete} onSendGallery={props.onSendGallery} onCreateGallery={() => props.onCreateGallery(item)} />)}
+      {bookings.map(item => <BookingCard key={item.id} item={item} processing={props.processing} onVerify={props.onVerify} onViewProof={props.onViewProof} onDelete={props.onDelete} onComplete={props.onComplete} onSendGallery={props.onSendGallery} onReschedule={() => props.onReschedule(item)} onCreateGallery={() => props.onCreateGallery(item)} />)}
     </div>
     <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
@@ -806,11 +1064,12 @@ function SortableHeader({ label, column, active, direction, onSort }: { label: s
   return <th className="px-4 py-3 font-bold"><button onClick={() => onSort(column)} className="inline-flex items-center gap-1 hover:text-[var(--text)]">{label}<span aria-hidden="true" className={active === column ? 'text-[var(--gold-dark)]' : 'text-transparent'}>{direction === 'asc' ? '▲' : '▼'}</span></button></th>;
 }
 
-function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery }: BookingTableProps & { item: BookingItem }) {
+function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery, onReschedule }: BookingTableProps & { item: BookingItem }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
   const isCompleted = item.status === 'completed';
   const hasGallery = !!item.gallery;
   const hasUnsentGallery = hasGallery && !item.gallery?.gallery_sent_at;
+  const canReschedule = !['completed', 'cancelled', 'expired'].includes(item.status);
   const sendReceipt = () => {
     const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     const message = `Halo kak *${item.full_name}*, terima kasih ya!\n\nPembayaran untuk sesi foto wisuda dengan Kleiora.grads (*Kode: ${item.code}*) sudah kami terima dan verifikasi.\n\n*Detail Sesi:*\n● Tanggal: ${dateStr}\n● Waktu: ${item.session_hour}.00 WITA\n● Lokasi: ${item.session_location}\n● Paket: ${item.package.name}\n\nKami tunggu kehadirannya ya kak!`;
@@ -820,23 +1079,51 @@ function BookingTableRow({ item, processing, onVerify, onViewProof, onCreateGall
 
   return <tr className="align-top hover:bg-[var(--surface2)]/50">
     <td className="px-4 py-4"><div className="font-bold">{item.full_name}</div><div className="mt-1 text-xs text-[var(--muted)]">{item.campus_name}</div><div className="mt-1 font-mono text-[11px] text-[var(--muted)]">{item.code}</div><a href={`https://wa.me/${whatsapp}`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><MessageCircle className="h-3 w-3" />{item.whatsapp}</a></td>
-    <td className="px-4 py-4"><div className="font-semibold">{formatDate(item.session_date)} · {item.session_hour}.00</div><div className="mt-2 flex items-center gap-1 text-xs text-[var(--muted)]"><MapPin className="h-3 w-3" />{item.session_location}</div></td>
+    <td className="px-4 py-4">
+      <div className="flex items-center gap-1.5">
+        <span className="font-semibold">{formatDate(item.session_date)} · {item.session_hour}.00</span>
+        {canReschedule && (
+          <button
+            type="button"
+            onClick={() => onReschedule(item)}
+            disabled={processing !== ''}
+            className="rounded-full p-1 text-[var(--gold-dark)] hover:bg-[var(--surface2)] hover:text-amber-800 transition"
+            title="Ubah Jadwal Sesi"
+          >
+            <Edit2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-1 text-xs text-[var(--muted)]"><MapPin className="h-3 w-3" />{item.session_location}</div>
+    </td>
     <td className="px-4 py-4"><div className="font-semibold">{item.package.name}</div></td>
     <td className="px-4 py-4"><div className="font-semibold">{formatRupiah(item.amount_due)}</div><div className="mt-1 text-xs text-[var(--muted)]">{item.payment_type === 'dp' ? 'DP 50%' : item.payment_type === 'dp_custom' ? 'DP Custom' : 'Pembayaran penuh'}</div></td>
     <td className="px-4 py-4"><Status value={bookingDisplayStatus(item)} /></td>
     <td className="px-4 py-4"><div className="ml-auto flex flex-nowrap justify-end gap-1.5">
       {item.payment_status === 'submitted' && !item.payment_order_id && !isCompleted && <><button onClick={() => onViewProof(item.code)} disabled={processing !== ''} className={smallButton}><ExternalLink className="h-3 w-3" />Lihat bukti</button><button onClick={() => onVerify(item.code)} disabled={processing !== ''} className={`${smallButton} border-emerald-700 bg-emerald-700 text-white`}><CheckCircle2 className="h-3 w-3" />Verifikasi</button></>}
       {isCompleted ? (hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>) : hasGallery && item.payment_status === 'verified' ? <>{hasUnsentGallery && <button onClick={() => onSendGallery(item)} className={`${smallButton} text-blue-700`}><Images className="h-3 w-3" />Kirim galeri</button>}<button onClick={() => onComplete(item.code)} disabled={processing !== ''} className={`${smallButton} text-emerald-700`}><CheckCircle2 className="h-3 w-3" />Selesai</button></> : item.status === 'confirmed' ? <><button onClick={sendReceipt} className={`${smallButton} text-emerald-700`}><MessageCircle className="h-3 w-3" />Kirim resi</button><button onClick={() => onCreateGallery(item)} className={smallButton}><Plus className="h-3 w-3" />Buat galeri</button></> : null}
+      {canReschedule && (
+        <button
+          type="button"
+          onClick={() => onReschedule(item)}
+          disabled={processing !== ''}
+          className={`${smallButton} border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100`}
+          title="Ubah jadwal sesi foto (reschedule)"
+        >
+          <CalendarDays className="h-3 w-3 text-amber-700" />Ubah Jadwal
+        </button>
+      )}
       {(!item.payment_order_id || item.status === 'expired' || item.payment_status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className={`${smallButton} border-red-200 bg-red-50 text-red-700`}><Trash className="h-3 w-3" />Hapus</button>}
     </div></td>
   </tr>;
 }
 
-function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void; onSendGallery: (item: BookingItem) => void }) {
+function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery, onDelete, onComplete, onSendGallery, onReschedule }: { item: BookingItem; processing: string; onVerify: (code: string) => void; onViewProof: (code: string) => void; onCreateGallery: () => void; onDelete: (code: string) => void; onComplete: (code: string) => void; onSendGallery: (item: BookingItem) => void; onReschedule: () => void }) {
   const whatsapp = item.whatsapp.replace(/[^0-9]/g, '').replace(/^0/, '62');
   const hasGallery = !!item.gallery;
   const hasUnsentGallery = hasGallery && !item.gallery?.gallery_sent_at;
   const isCompleted = item.status === 'completed';
+  const canReschedule = !['completed', 'cancelled', 'expired'].includes(item.status);
 
   const handleSendReceipt = () => {
     const dateStr = new Date(`${item.session_date}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -864,6 +1151,16 @@ function BookingCard({ item, processing, onVerify, onViewProof, onCreateGallery,
               ) : item.payment_status === 'pending' ? (
                 <span className="text-xs text-[var(--muted)]">Menunggu pembayaran</span>
               ) : null}
+              {canReschedule && (
+                <button
+                  type="button"
+                  onClick={onReschedule}
+                  disabled={processing !== ''}
+                  className="btn-secondary flex-shrink-0 whitespace-nowrap px-3 py-2 text-xs border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+                >
+                  <CalendarDays className="h-3.5 w-3.5 text-amber-700" />Ubah Jadwal
+                </button>
+              )}
               {(!item.payment_order_id || item.status === 'expired' || item.payment_status === 'expired') && <button onClick={() => onDelete(item.code)} disabled={processing !== ''} className="flex-shrink-0 whitespace-nowrap flex items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"><Trash className="h-3.5 w-3.5" />Hapus</button>}
             </div></div></article>;
 }

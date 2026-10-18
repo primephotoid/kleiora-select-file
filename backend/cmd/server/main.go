@@ -302,6 +302,7 @@ func main() {
 	studio.Post("/bookings/:code/access-token", h.RotateBookingAccessToken)
 	studio.Patch("/bookings/:code/verify-payment", h.VerifyBookingPayment)
 	studio.Patch("/bookings/:code/complete", h.CompleteBooking)
+	studio.Patch("/bookings/:code/reschedule", h.RescheduleBooking)
 	studio.Get("/bookings/:code/payment-proof", h.ViewPaymentProof)
 	studio.Delete("/bookings/:code", h.DeleteBooking)
 	studio.Get("/galleries", h.ListGalleries)

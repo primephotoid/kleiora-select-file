@@ -824,6 +824,84 @@ func (h *Handler) CompleteBooking(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Booking berhasil ditandai selesai dan galeri telah dibersihkan", "booking": booking})
 }
 
+func (h *Handler) RescheduleBooking(c *fiber.Ctx) error {
+	code := strings.ToUpper(c.Params("code"))
+	var booking models.Booking
+	if err := h.db.Where("code = ?", code).First(&booking).Error; err != nil {
+		return apiError(c, fiber.StatusNotFound, "Booking tidak ditemukan")
+	}
+	if booking.Status == "completed" || booking.Status == "cancelled" || booking.Status == "expired" {
+		return apiError(c, fiber.StatusConflict, "Booking yang sudah selesai, dibatalkan, atau kedaluwarsa tidak dapat dijadwalkan ulang")
+	}
+
+	var req struct {
+		SessionDate     string `json:"session_date"`
+		SessionHour     string `json:"session_hour"`
+		SessionLocation string `json:"session_location"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return apiError(c, fiber.StatusBadRequest, "Data tidak dapat dibaca")
+	}
+	req.SessionDate = strings.TrimSpace(req.SessionDate)
+	req.SessionHour = strings.TrimSpace(req.SessionHour)
+	req.SessionLocation = strings.TrimSpace(req.SessionLocation)
+
+	if req.SessionDate == "" && req.SessionHour == "" && req.SessionLocation == "" {
+		return apiError(c, fiber.StatusBadRequest, "Setidaknya satu field (tanggal, jam, atau lokasi) harus diisi")
+	}
+
+	oldDate := booking.SessionDate
+	oldHour := booking.SessionHour
+	oldLocation := booking.SessionLocation
+
+	updates := map[string]any{}
+
+	newDate := booking.SessionDate
+	newHour := booking.SessionHour
+
+	if req.SessionDate != "" {
+		if _, err := time.Parse("2006-01-02", req.SessionDate); err != nil {
+			return apiError(c, fiber.StatusBadRequest, "Format tanggal tidak valid (gunakan YYYY-MM-DD)")
+		}
+		newDate = req.SessionDate
+		updates["session_date"] = req.SessionDate
+	}
+	if req.SessionHour != "" {
+		if !hourPattern.MatchString(req.SessionHour) {
+			return apiError(c, fiber.StatusBadRequest, "Jam sesi tidak valid (gunakan format HH, contoh: 08)")
+		}
+		newHour = req.SessionHour
+		updates["session_hour"] = req.SessionHour
+	}
+	if req.SessionLocation != "" {
+		updates["session_location"] = req.SessionLocation
+	}
+
+	// Check slot availability for the new date/hour (only if date or hour changed)
+	if req.SessionDate != "" || req.SessionHour != "" {
+		var count int64
+		q := occupiedBookings(h.db, newDate, newHour).Where("id <> ?", booking.ID)
+		if err := q.Count(&count).Error; err != nil {
+			return apiError(c, fiber.StatusInternalServerError, "Gagal memeriksa ketersediaan slot")
+		}
+		if count >= slotCapacity {
+			return apiError(c, fiber.StatusConflict, fmt.Sprintf("Slot %s jam %s.00 WITA sudah penuh", newDate, newHour))
+		}
+	}
+
+	if err := h.db.Model(&booking).Updates(updates).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal memperbarui jadwal booking")
+	}
+
+	// Reload to return the updated booking
+	h.db.Preload("Package").Where("code = ?", code).First(&booking)
+
+	go services.SendTelegramRescheduleNotification(booking, oldDate, oldHour, oldLocation)
+
+	h.events.Broadcast("booking_updated")
+	return c.JSON(fiber.Map{"message": "Jadwal booking berhasil diperbarui", "booking": booking})
+}
+
 func (h *Handler) RotateBookingAccessToken(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {

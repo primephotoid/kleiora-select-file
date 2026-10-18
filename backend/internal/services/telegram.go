@@ -304,3 +304,60 @@ func SendTelegramFGReminderNotification(booking models.Booking) {
 		log.Println("Telegram FG reminder notification sent for booking:", booking.Code)
 	}
 }
+
+// SendTelegramRescheduleNotification sends an alert to Admin's Telegram when a booking schedule is updated/rescheduled.
+func SendTelegramRescheduleNotification(booking models.Booking, oldDate, oldHour, oldLocation string) {
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	chatID := strings.TrimSpace(os.Getenv("TELEGRAM_CHAT_ID"))
+
+	if botToken == "" || chatID == "" {
+		log.Println("Telegram credentials not configured. Skipping reschedule notification.")
+		return
+	}
+
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", botToken)
+
+	formatDate := func(d string) string {
+		parts := strings.Split(d, "-")
+		if len(parts) == 3 {
+			return fmt.Sprintf("%s/%s/%s", parts[2], parts[1], parts[0])
+		}
+		return d
+	}
+
+	pkgName := booking.Package.Name
+	if pkgName == "" {
+		pkgName = "Paket Foto"
+	}
+
+	message := fmt.Sprintf(
+		"🔄 <b>JADWAL SESI FOTO DIUBAH (RESCHEDULE)</b>\n\n"+
+			"Jadwal sesi foto untuk klien telah diperbarui oleh Admin:\n\n"+
+			"<b>Kode Booking:</b> <code>%s</code>\n"+
+			"<b>Klien:</b> %s\n"+
+			"<b>Kampus:</b> %s\n"+
+			"<b>WhatsApp Klien:</b> %s\n"+
+			"<b>Paket:</b> %s\n\n"+
+			"📅 <b>Jadwal Lama:</b> %s · %s.00 WITA (%s)\n"+
+			"✨ <b>Jadwal Baru:</b> %s · %s.00 WITA (%s)\n\n"+
+			"Pastikan jadwal fotografer & studio telah disesuaikan!",
+		html.EscapeString(booking.Code),
+		html.EscapeString(booking.FullName),
+		html.EscapeString(booking.CampusName),
+		html.EscapeString(booking.WhatsApp),
+		html.EscapeString(pkgName),
+		formatDate(oldDate),
+		html.EscapeString(oldHour),
+		html.EscapeString(oldLocation),
+		formatDate(booking.SessionDate),
+		html.EscapeString(booking.SessionHour),
+		html.EscapeString(booking.SessionLocation),
+	)
+
+	if err := postTelegramHTMLMessage(endpoint, chatID, message); err != nil {
+		log.Printf("Failed to send reschedule telegram message for %s: %v\n", booking.Code, err)
+	} else {
+		log.Println("Telegram reschedule notification sent for booking:", booking.Code)
+	}
+}
+
