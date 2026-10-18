@@ -902,6 +902,64 @@ func (h *Handler) RescheduleBooking(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Jadwal booking berhasil diperbarui", "booking": booking})
 }
 
+func (h *Handler) GetDailySchedule(c *fiber.Ctx) error {
+	date := strings.TrimSpace(c.Query("date"))
+	if date == "" {
+		date = makassarToday().Format("2006-01-02")
+	} else {
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			return apiError(c, fiber.StatusBadRequest, "Format tanggal tidak valid (gunakan YYYY-MM-DD)")
+		}
+	}
+
+	month := strings.TrimSpace(c.Query("month"))
+	if month == "" {
+		if len(date) >= 7 {
+			month = date[:7]
+		} else {
+			month = makassarToday().Format("2006-01")
+		}
+	} else {
+		if _, err := time.Parse("2006-01", month); err != nil {
+			return apiError(c, fiber.StatusBadRequest, "Format bulan tidak valid (gunakan YYYY-MM)")
+		}
+	}
+
+	// Monthly counts: map[string]int
+	type dateCount struct {
+		SessionDate string `json:"session_date"`
+		Total       int    `json:"total"`
+	}
+	var dateCounts []dateCount
+	h.db.Model(&models.Booking{}).
+		Select("session_date, count(*) as total").
+		Where("session_date LIKE ? AND status <> 'cancelled'", month+"-%").
+		Group("session_date").
+		Scan(&dateCounts)
+
+	monthlyMap := make(map[string]int)
+	for _, dc := range dateCounts {
+		monthlyMap[dc.SessionDate] = dc.Total
+	}
+
+	// Bookings on the selected date
+	var bookings []models.Booking
+	if err := h.db.Preload("Package").Preload("Gallery").Preload("Gallery.Selection").
+		Where("session_date = ? AND status <> 'cancelled'", date).
+		Order("session_hour ASC, id ASC").
+		Find(&bookings).Error; err != nil {
+		return apiError(c, fiber.StatusInternalServerError, "Gagal memuat jadwal sesi harian")
+	}
+
+	return c.JSON(fiber.Map{
+		"date":            date,
+		"month":           month,
+		"total_clients":   len(bookings),
+		"bookings":        bookings,
+		"monthly_summary": monthlyMap,
+	})
+}
+
 func (h *Handler) RotateBookingAccessToken(c *fiber.Ctx) error {
 	var booking models.Booking
 	if err := h.db.Where("code = ?", strings.ToUpper(c.Params("code"))).First(&booking).Error; err != nil {

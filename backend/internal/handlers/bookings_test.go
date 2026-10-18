@@ -694,3 +694,50 @@ func TestRescheduleBooking(t *testing.T) {
 	}
 }
 
+func TestGetDailySchedule(t *testing.T) {
+	app, db := bookingTestApp(t)
+	h := NewHandler(db, &config.Config{JWTSecret: "secret"}, services.NewDriveService(""))
+	app.Get("/studio/schedule", h.GetDailySchedule)
+
+	// Create 3 bookings on the same date: 2099-10-20
+	postBookingAt(t, app, "Client A", "2099-10-20", "08")
+	postBookingAt(t, app, "Client B", "2099-10-20", "10")
+	postBookingAt(t, app, "Client C", "2099-10-20", "13")
+	// And 1 on another date
+	postBookingAt(t, app, "Client D", "2099-10-21", "09")
+
+	req := httptest.NewRequest(http.MethodGet, "/studio/schedule?date=2099-10-20&month=2099-10", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Date           string           `json:"date"`
+		Month          string           `json:"month"`
+		TotalClients   int              `json:"total_clients"`
+		Bookings       []models.Booking `json:"bookings"`
+		MonthlySummary map[string]int   `json:"monthly_summary"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+
+	if result.TotalClients != 3 {
+		t.Fatalf("expected 3 clients for 2099-10-20, got %d", result.TotalClients)
+	}
+	if len(result.Bookings) != 3 {
+		t.Fatalf("expected 3 bookings in list, got %d", len(result.Bookings))
+	}
+	if result.MonthlySummary["2099-10-20"] != 3 {
+		t.Fatalf("expected monthly summary count 3 for 2099-10-20, got %d", result.MonthlySummary["2099-10-20"])
+	}
+	if result.MonthlySummary["2099-10-21"] != 1 {
+		t.Fatalf("expected monthly summary count 1 for 2099-10-21, got %d", result.MonthlySummary["2099-10-21"])
+	}
+}
+
+

@@ -587,6 +587,10 @@ export default function DashboardPage() {
         <section className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
           <div><p className="text-xs font-bold uppercase tracking-[.2em] text-[var(--gold-dark)]">Dashboard studio</p><h1 className="mt-2 font-serif text-4xl font-medium sm:text-5xl">Selamat bekerja, Admin Kleiora.grads</h1><p className="mt-3 max-w-xl text-sm text-[var(--muted)]">Pantau booking, periksa pembayaran, lalu bagikan galeri foto kepada klien.</p></div>
           <div className="flex gap-2 w-full sm:w-auto flex-col sm:flex-row">
+            <Link href="/dashboard/schedule" className="btn-secondary w-full px-5 py-3.5 text-sm sm:w-auto border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 font-bold inline-flex items-center justify-center gap-2">
+              <CalendarDays className="h-4 w-4 text-amber-700" />
+              Jadwal Sesi Harian
+            </Link>
             <button onClick={() => { setPortfolioForm(emptyPortfolioForm); setShowCreatePortfolio(true); }} className="btn-secondary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Portofolio</button>
             <button onClick={() => { setPkgForm(emptyPackageForm); setShowCreatePackage(true); }} className="btn-secondary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Paket</button>
             <button onClick={() => setShowCreate(true)} className="btn-primary w-full px-6 py-3.5 text-sm sm:w-auto"><Plus className="h-4 w-4" />Buat Galeri</button>
@@ -603,6 +607,10 @@ export default function DashboardPage() {
 
         <div className="mt-8 flex gap-1 rounded-2xl border border-[var(--line)] bg-white p-1.5 sm:w-fit flex-wrap">
           <TabButton active={tab === 'bookings'} onClick={() => setTab('bookings')} icon={<ReceiptText />} label={`Booking (${bookingSummary.total})`} />
+          <Link href="/dashboard/schedule" className="flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold sm:flex-none text-[var(--muted)] hover:bg-[var(--surface2)] hover:text-amber-900 transition">
+            <CalendarDays className="h-4 w-4 text-amber-700" />
+            Jadwal Harian
+          </Link>
           <TabButton active={tab === 'galleries'} onClick={() => setTab('galleries')} icon={<Images />} label={`Galeri (${galleries.filter(isGalleryVisible).length})`} />
           <TabButton active={tab === 'packages'} onClick={() => setTab('packages')} icon={<PackageIcon />} label={`Paket (${packages.length})`} />
           <TabButton active={tab === 'portfolios'} onClick={() => setTab('portfolios')} icon={<Images />} label={`Portofolio (${portfolios.length})`} />
