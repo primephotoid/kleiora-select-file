@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MessageCircle, Star, X, Check, Loader2 } from 'lucide-react';
+import { MessageCircle, Star, X, Check, Loader2, AlertCircle } from 'lucide-react';
 import { API_BASE_URL, ReviewItem } from '@/lib/api';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
@@ -12,6 +12,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({ client_name: '', rating: 5, comment: '' });
+  const [fieldErrors, setFieldErrors] = useState<{ client_name?: string; comment?: string }>({});
 
   useBodyScrollLock(showForm);
 
@@ -41,6 +42,18 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const errors: { client_name?: string; comment?: string } = {};
+    if (!form.client_name.trim()) {
+      errors.client_name = 'Nama lengkap wajib diisi.';
+    }
+    if (!form.comment.trim()) {
+      errors.comment = 'Komentar ulasan wajib diisi.';
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     setError('');
     try {
@@ -67,6 +80,7 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
     setShowForm(false);
     setSuccess(false);
     setError('');
+    setFieldErrors({});
     setForm({ client_name: '', rating: 5, comment: '' });
   }
 
@@ -141,11 +155,30 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
                 <button type="button" onClick={closeReviewForm} className="btn-primary mt-7 w-full py-3.5 text-sm">Selesai</button>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form noValidate onSubmit={handleSubmit} className="space-y-4">
                 {error && <div role="alert" className="flex items-start justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs leading-5 text-red-700"><span>{error}</span><button type="button" onClick={() => setError('')} aria-label="Tutup pesan"><X className="h-4 w-4" /></button></div>}
                 <div>
                   <label className="mb-1.5 block text-xs font-bold text-gray-700">Nama Lengkap</label>
-                  <input required value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface2)] px-4 py-3 text-sm focus:border-[var(--gold)] focus:outline-none focus:ring-2 focus:ring-[var(--gold-glow)]" placeholder="Tulis namamu..." />
+                  <input
+                    value={form.client_name}
+                    aria-invalid={Boolean(fieldErrors.client_name)}
+                    onChange={e => {
+                      setForm({ ...form, client_name: e.target.value });
+                      if (fieldErrors.client_name) setFieldErrors(prev => ({ ...prev, client_name: undefined }));
+                    }}
+                    className={`w-full rounded-xl border bg-[var(--surface2)] px-4 py-3 text-sm focus:outline-none focus:ring-2 ${
+                      fieldErrors.client_name
+                        ? 'border-red-500 bg-red-50/40 focus:border-red-500 focus:ring-red-200'
+                        : 'border-[var(--line)] focus:border-[var(--gold)] focus:ring-[var(--gold-glow)]'
+                    }`}
+                    placeholder="Tulis namamu..."
+                  />
+                  {fieldErrors.client_name && (
+                    <div role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600 animate-in fade-in slide-in-from-top-1">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      <span>{fieldErrors.client_name}</span>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-bold text-gray-700">Penilaian</label>
@@ -159,7 +192,26 @@ export function ReviewSection({ initialReviews }: { initialReviews: ReviewItem[]
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-bold text-gray-700">Komentar</label>
-                  <textarea required value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface2)] px-4 py-3 text-sm min-h-[100px] focus:border-[var(--gold)] focus:outline-none focus:ring-2 focus:ring-[var(--gold-glow)]" placeholder="Bagaimana pengalaman serumu bersama kami?" />
+                  <textarea
+                    value={form.comment}
+                    aria-invalid={Boolean(fieldErrors.comment)}
+                    onChange={e => {
+                      setForm({ ...form, comment: e.target.value });
+                      if (fieldErrors.comment) setFieldErrors(prev => ({ ...prev, comment: undefined }));
+                    }}
+                    className={`w-full rounded-xl border bg-[var(--surface2)] px-4 py-3 text-sm min-h-[100px] focus:outline-none focus:ring-2 ${
+                      fieldErrors.comment
+                        ? 'border-red-500 bg-red-50/40 focus:border-red-500 focus:ring-red-200'
+                        : 'border-[var(--line)] focus:border-[var(--gold)] focus:ring-[var(--gold-glow)]'
+                    }`}
+                    placeholder="Bagaimana pengalaman serumu bersama kami?"
+                  />
+                  {fieldErrors.comment && (
+                    <div role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600 animate-in fade-in slide-in-from-top-1">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                      <span>{fieldErrors.comment}</span>
+                    </div>
+                  )}
                 </div>
                 <button type="submit" disabled={submitting} className="btn-primary w-full py-3.5 mt-2">
                   {submitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'Kirim Ulasan'}

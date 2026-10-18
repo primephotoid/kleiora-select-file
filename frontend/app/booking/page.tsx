@@ -7,6 +7,7 @@ import { ArrowLeft, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calenda
 import { SiteFooter, SiteHeader } from '@/components/site-header';
 import { apiRequest, BookingItem, formatRupiah, PackageItem, getImageUrl, API_BASE_URL } from '@/lib/api';
 import { LocationAutocomplete } from '@/components/LocationAutocomplete';
+import { CampusAutocomplete } from '@/components/CampusAutocomplete';
 import { PricelistGallery } from '@/components/PricelistGallery';
 import { RegionSwitcher } from '@/components/RegionSwitcher';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -42,6 +43,9 @@ function BookingFlow() {
   const [paymentMethod, setPaymentMethod] = useState('qris');
   const [copiedText, setCopiedText] = useState('');
   const [dpRawInput, setDpRawInput] = useState('');
+  const [dpCustomError, setDpCustomError] = useState('');
+  const [paymentMethodError, setPaymentMethodError] = useState('');
+  const [proofError, setProofError] = useState('');
   
   // QRIS Midtrans states
   const [requestID, setRequestID] = useState('');
@@ -257,10 +261,18 @@ function BookingFlow() {
     if (Object.keys(validationErrors).length > 0) {
       setFieldErrors(validationErrors);
       setError('Periksa kembali data yang ditandai di bawah ini.');
+      const firstKey = Object.keys(validationErrors)[0];
+      const targetElement = document.querySelector(`[data-field="${firstKey}"], [aria-invalid="true"]`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (targetElement as HTMLElement)?.focus?.();
+      }
       return;
     }
     if (form.payment_type === 'dp_custom' && (!form.custom_dp_amount || form.custom_dp_amount < 50000 || form.custom_dp_amount > displayAmount)) {
-      setError('Masukkan nominal DP Custom minimal Rp50.000 dan tidak lebih dari harga paket.');
+      const msg = 'Masukkan nominal DP Custom minimal Rp50.000 dan tidak lebih dari harga paket.';
+      setDpCustomError(msg);
+      setError(msg);
       return;
     }
     setFieldErrors({});
@@ -270,11 +282,20 @@ function BookingFlow() {
 
   async function createBooking() {
     if (!booking && form.payment_type === 'dp_custom' && (!Number.isInteger(form.custom_dp_amount) || form.custom_dp_amount < 50000 || form.custom_dp_amount > displayAmount)) {
-      setError('DP custom minimal Rp50.000 dan tidak boleh melebihi harga paket.');
+      const msg = 'DP custom minimal Rp50.000 dan tidak boleh melebihi harga paket.';
+      setDpCustomError(msg);
+      setError(msg);
+      const el = document.querySelector('[data-field="custom_dp_amount"]');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      (el as HTMLElement)?.focus?.();
       return;
     }
     if (!paymentMethod) {
-      setError('Pilih metode pembayaran terlebih dahulu.');
+      const msg = 'Pilih metode pembayaran terlebih dahulu.';
+      setPaymentMethodError(msg);
+      setError(msg);
+      const el = document.querySelector('[data-field="payment_methods"]');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
 
@@ -302,11 +323,19 @@ function BookingFlow() {
     } else {
       // Manual payment (transfer or ewallet)
       if (booking && !proof) {
-        setError('Silakan upload bukti pembayaran terlebih dahulu.');
+        const msg = 'Silakan upload bukti pembayaran terlebih dahulu.';
+        setProofError(msg);
+        setError(msg);
+        const el = document.querySelector('[data-field="proof_upload"]');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
       if (proof && proof.size > 5 * 1024 * 1024) {
-        setError('Ukuran file bukti pembayaran terlalu besar (maksimal 5MB).');
+        const msg = 'Ukuran file bukti pembayaran terlalu besar (maksimal 5MB).';
+        setProofError(msg);
+        setError(msg);
+        const el = document.querySelector('[data-field="proof_upload"]');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
       setError(''); setSubmitting(true);
@@ -474,33 +503,112 @@ function BookingFlow() {
               </button>
               <h2 className="font-serif text-3xl font-medium">Lengkapi data dirimu</h2><p className="mt-2 text-sm text-[var(--muted)]">Kami menggunakan data ini untuk mengatur jadwal dan menghubungimu.</p>
               <div className="mt-8 grid gap-5">
-                <Field label="Nama Lengkap" error={fieldErrors.full_name}><input required aria-invalid={Boolean(fieldErrors.full_name)} value={form.full_name} onChange={e => updateField('full_name', e.target.value)} className="field" placeholder="Nama lengkap" /></Field>
-                <Field label="Asal Kampus" error={fieldErrors.campus_name}><input required aria-invalid={Boolean(fieldErrors.campus_name)} value={form.campus_name} onChange={e => updateField('campus_name', e.target.value)} className="field" placeholder="Asal kampus" /></Field>
+                <Field label="Nama Lengkap" error={fieldErrors.full_name}>
+                  <input
+                    required
+                    data-field="full_name"
+                    aria-invalid={Boolean(fieldErrors.full_name)}
+                    value={form.full_name}
+                    onChange={e => updateField('full_name', e.target.value)}
+                    className="field"
+                    placeholder="Nama lengkap"
+                  />
+                </Field>
+                <Field
+                  label="Asal Kampus"
+                  error={fieldErrors.campus_name}
+                  hint="Pilih dari saran otomatis atau ketik nama/singkatan kampusmu (cth: UNHAS, UNM, UIN, UMI)."
+                >
+                  <CampusAutocomplete
+                    value={form.campus_name}
+                    onChange={val => updateField('campus_name', val)}
+                    ariaInvalid={Boolean(fieldErrors.campus_name)}
+                    dataField="campus_name"
+                    className="field"
+                    placeholder="Contoh: Universitas Hasanuddin (UNHAS)"
+                  />
+                </Field>
                 <div>
-                  <Field label="No. WhatsApp" error={fieldErrors.whatsapp}><input required type="tel" inputMode="tel" autoComplete="tel" aria-invalid={Boolean(fieldErrors.whatsapp)} value={form.whatsapp} onChange={e => updateField('whatsapp', e.target.value)} className="field" placeholder="Contoh: 081234567890" /></Field>
-                  <p className="mt-1 text-[11px] text-[var(--muted)]">Pastikan nomor WhatsApp aktif agar kami mudah menghubungi kamu.</p>
+                  <Field
+                    label="No. WhatsApp"
+                    error={fieldErrors.whatsapp}
+                    hint="Pastikan nomor WhatsApp aktif agar kami mudah menghubungi kamu."
+                  >
+                    <input
+                      required
+                      data-field="whatsapp"
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="tel"
+                      aria-invalid={Boolean(fieldErrors.whatsapp)}
+                      value={form.whatsapp}
+                      onChange={e => updateField('whatsapp', e.target.value.replace(/[^0-9+]/g, ''))}
+                      className="field"
+                      placeholder="Contoh: 081234567890"
+                    />
+                  </Field>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div>
-                    <Field label={<span className="flex items-center gap-1.5"><Calendar className="h-4 w-4 text-[var(--gold)]" /> Tanggal Sesi Foto</span>} error={fieldErrors.session_date}><input required type="date" min={todayInMakassar()} aria-invalid={Boolean(fieldErrors.session_date)} value={form.session_date} onChange={e => updateField('session_date', e.target.value)} className="field" /></Field>
-                    <p className="mt-1 text-[11px] text-[var(--muted)]">Format: dd/mm/yyyy (Sesuai pengaturan perangkat Anda)</p>
+                    <Field
+                      label={<span className="flex items-center gap-1.5"><Calendar className="h-4 w-4 text-[var(--gold)]" /> Tanggal Sesi Foto</span>}
+                      error={fieldErrors.session_date}
+                      hint="Format: dd/mm/yyyy (Sesuai pengaturan perangkat Anda)"
+                    >
+                      <input
+                        required
+                        data-field="session_date"
+                        type="date"
+                        min={todayInMakassar()}
+                        aria-invalid={Boolean(fieldErrors.session_date)}
+                        value={form.session_date}
+                        onChange={e => updateField('session_date', e.target.value)}
+                        className="field"
+                      />
+                    </Field>
                   </div>
                   <div>
-                    <Field label={<span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-[var(--gold)]" /> Jam Sesi Foto</span>} error={fieldErrors.session_hour}><select required disabled={!form.session_date || slotsLoading} aria-invalid={Boolean(fieldErrors.session_hour)} value={form.session_hour} onChange={e => updateField('session_hour', e.target.value)} className="field"><option value="">{slotsLoading ? 'Memeriksa...' : 'Pilih jam'}</option>{slots.map(slot => <option key={slot.hour} value={slot.hour} disabled={!slot.available}>{slot.hour}.00 WITA{slot.available ? '' : ' — penuh'}</option>)}</select></Field>
-                    <p className="mt-1 text-[11px] text-[var(--muted)]">Pilih jam mulai sesi foto.</p>
+                    <Field
+                      label={<span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-[var(--gold)]" /> Jam Sesi Foto</span>}
+                      error={fieldErrors.session_hour}
+                      hint="Pilih jam mulai sesi foto."
+                    >
+                      <select
+                        required
+                        data-field="session_hour"
+                        disabled={!form.session_date || slotsLoading}
+                        aria-invalid={Boolean(fieldErrors.session_hour)}
+                        value={form.session_hour}
+                        onChange={e => updateField('session_hour', e.target.value)}
+                        className="field"
+                      >
+                        <option value="">{slotsLoading ? 'Memeriksa...' : 'Pilih jam'}</option>
+                        {slots.map(slot => (
+                          <option key={slot.hour} value={slot.hour} disabled={!slot.available}>
+                            {slot.hour}.00 WITA{slot.available ? '' : ' — penuh'}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                   </div>
                 </div>
                 <div>
-                  <Field label={<span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[var(--gold)]" /> Lokasi Sesi Foto</span>} error={fieldErrors.session_location}>
-                    <LocationAutocomplete
-                      value={form.session_location}
-                      onChange={val => updateField('session_location', val)}
-                      placeholder="Contoh: Taman Ismail Marzuki, Jakarta"
-                      className="field"
-                      ariaInvalid={Boolean(fieldErrors.session_location)}
-                    />
+                  <Field
+                    label={<span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[var(--gold)]" /> Lokasi Sesi Foto</span>}
+                    error={fieldErrors.session_location}
+                    hint={<>Ketik nama lokasi dan pilih dari saran, atau cari di <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--gold-dark)] hover:underline">Google Maps &rarr;</a></>}
+                  >
+                    <div data-field="session_location">
+                      <LocationAutocomplete
+                        value={form.session_location}
+                        onChange={val => updateField('session_location', val)}
+                        placeholder="Contoh: Taman Ismail Marzuki, Jakarta"
+                        className="field"
+                        ariaInvalid={Boolean(fieldErrors.session_location)}
+                      />
+                    </div>
                   </Field>
-                  <p className="mt-1 text-[11px] text-[var(--muted)]">Ketik nama lokasi dan pilih dari saran, atau cari di <a href="https://maps.google.com" target="_blank" rel="noreferrer" className="font-semibold text-[var(--gold-dark)] hover:underline">Google Maps &rarr;</a></p>
                 </div>
               </div>
               <div className="mt-5"><Field label="Catatan (opsional)"><textarea rows={3} value={form.notes} onChange={e => setForm({...form, notes:e.target.value})} className="field resize-none" placeholder="Informasi tambahan untuk tim kami" /></Field></div>
@@ -611,7 +719,7 @@ function BookingFlow() {
                       <p className="text-sm font-medium text-[var(--muted)]">DP Custom</p>
                       {form.payment_type !== 'dp_custom' && <p className="mt-1 text-xs text-[var(--muted)]">Input manual (Min 50k)</p>}
                       {form.payment_type === 'dp_custom' && (
-                        <div className="mt-3">
+                        <div className="mt-3" data-field="custom_dp_amount">
                           <input
                             type="text"
                             inputMode="numeric"
@@ -623,12 +731,21 @@ function BookingFlow() {
                               const num = parseInt(raw) || 0;
                               setDpRawInput(raw === '' ? '' : num.toLocaleString('id-ID'));
                               setForm({...form, custom_dp_amount: num});
+                              if (dpCustomError) setDpCustomError('');
                             }}
-                            className="w-full rounded-lg border border-[var(--line)] bg-[var(--surface2)] p-2 text-sm focus:border-[var(--gold)] focus:outline-none"
+                            className={`w-full rounded-lg border bg-[var(--surface2)] p-2 text-sm focus:outline-none ${
+                              dpCustomError ? 'border-red-500 bg-red-50/50 ring-1 ring-red-500' : 'border-[var(--line)] focus:border-[var(--gold)]'
+                            }`}
                             placeholder="Nominal (Min 50.000)"
                           />
-                          {form.custom_dp_amount > 0 && (
+                          {form.custom_dp_amount > 0 && !dpCustomError && (
                             <p className="mt-1 text-xs text-[var(--muted)]">= {formatRupiah(form.custom_dp_amount)}</p>
+                          )}
+                          {dpCustomError && (
+                            <div role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600 animate-in fade-in slide-in-from-top-1">
+                              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                              <span>{dpCustomError}</span>
+                            </div>
                           )}
                         </div>
                       )}
@@ -647,14 +764,14 @@ function BookingFlow() {
                     </span>
                   )}
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-3" data-field="payment_methods">
                   {[
                     { id: 'qris', title: 'QRIS Otomatis', desc: 'Instant & Konfirmasi Otomatis', icon: <QrCode className="h-6 w-6 text-[var(--gold-dark)]" /> },
                     { id: 'transfer', title: 'Transfer Bank', desc: 'BCA, Mandiri, BRI, SeaBank', icon: <Landmark className="h-6 w-6" /> },
                     { id: 'ewallet', title: 'E-Wallet', desc: 'DANA, ShopeePay, OVO', icon: <Wallet className="h-6 w-6" /> }
                   ].map(method => (
                     <label key={method.id} className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition-colors ${paymentMethod === method.id ? 'border-[var(--text)] bg-[var(--surface2)] shadow-sm ring-1 ring-[var(--text)]' : 'border-[var(--line)] hover:border-[var(--text)]'}`}>
-                      <input type="radio" className="hidden" checked={paymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} />
+                      <input type="radio" className="hidden" checked={paymentMethod === method.id} onChange={() => { setPaymentMethod(method.id); if (paymentMethodError) setPaymentMethodError(''); }} />
                       <div className="flex shrink-0 items-center justify-center">{method.icon}</div>
                       <div>
                         <p className="font-bold text-sm">{method.title}</p>
@@ -663,6 +780,12 @@ function BookingFlow() {
                     </label>
                   ))}
                 </div>
+                {paymentMethodError && (
+                  <div role="alert" className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 p-2.5 rounded-xl animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                    <span>{paymentMethodError}</span>
+                  </div>
+                )}
               </div>
 
               {/* Rincian QRIS */}
@@ -791,9 +914,9 @@ function BookingFlow() {
                   )}
 
                   {/* Upload Bukti Foto */}
-                  <div className="mt-6">
+                  <div className="mt-6" data-field="proof_upload">
                     <h3 className="mb-3 flex items-center gap-2 font-bold"><Upload className="h-5 w-5" /> Upload Bukti Pembayaran / Transaksi</h3>
-                    <label className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--line)] text-center transition-colors hover:border-[var(--gold)] hover:bg-[var(--gold-glow)] ${proofPreview ? 'p-4' : 'p-8'}`}>
+                    <label className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed ${proofError ? 'border-red-400 bg-red-50/40' : 'border-[var(--line)] hover:border-[var(--gold)] hover:bg-[var(--gold-glow)]'} text-center transition-colors ${proofPreview ? 'p-4' : 'p-8'}`}>
                       {proofPreview ? (
                         <>
                           <div className="relative flex max-h-72 w-full items-center justify-center overflow-hidden rounded-xl bg-black/5">
@@ -818,6 +941,7 @@ function BookingFlow() {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         setError('');
+                        setProofError('');
                         setProof(null);
                         setProcessingProof(true);
                         try {
@@ -837,6 +961,12 @@ function BookingFlow() {
                         }
                       }} />
                     </label>
+                    {proofError && (
+                      <div role="alert" className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 p-2.5 rounded-xl animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />
+                        <span>{proofError}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -928,12 +1058,28 @@ function BookingFlow() {
       </main>
       <SiteFooter />
       <ConfirmDialog open={showNewBooking} danger={false} title="Buat booking baru?" description="Reservasi sebelumnya tetap tercatat. Lanjutkan hanya jika pembayaran sebelumnya belum dibayar dan sudah kedaluwarsa." confirmLabel="Booking baru" onConfirm={startNewBooking} onCancel={() => setShowNewBooking(false)} />
-      <style jsx global>{`.field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none}.field:focus{border-color:var(--gold)}.field[aria-invalid="true"]{border-color:#ef4444;background:#fffafa}.field:disabled{opacity:.6}`}</style>
+      <style jsx global>{`.field{width:100%;border:1px solid var(--line);border-radius:.75rem;background:var(--bg);padding:.8rem .9rem;font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s}.field:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}.field[aria-invalid="true"]{border-color:#ef4444 !important;background:#fffafa !important;box-shadow:0 0 0 1px #ef4444 !important}.field:disabled{opacity:.6}`}</style>
     </div>
   );
 }
 
-function Field({ label, children, error }: { label: React.ReactNode; children: React.ReactNode; error?: string }) { return <label className="block"><span className="mb-2 block text-sm font-bold">{label}</span>{children}{error && <span className="mt-1.5 block text-xs text-red-600">{error}</span>}</label>; }
+function Field({ label, children, error, hint }: { label: React.ReactNode; children: React.ReactNode; error?: string; hint?: React.ReactNode }) {
+  return (
+    <div className="block">
+      <label className="mb-2 block text-sm font-bold text-gray-800">{label}</label>
+      {children}
+      {error && (
+        <div role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-red-600 animate-in fade-in slide-in-from-top-1">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+          <span>{error}</span>
+        </div>
+      )}
+      {hint && (
+        <p className="mt-1 text-[11px] text-[var(--muted)]">{hint}</p>
+      )}
+    </div>
+  );
+}
 function Detail({ label, value }: { label: string; value: string }) { return <div><span className="block text-xs text-[var(--muted)]">{label}</span><strong>{value}</strong></div>; }
 
 export default function BookingPage() {
