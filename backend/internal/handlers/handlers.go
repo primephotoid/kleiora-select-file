@@ -34,7 +34,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const slotCapacity int64 = 2
+const slotCapacity int64 = 1
 
 const bookingTokenHeader = "X-Booking-Token"
 const paymentProofVersionHeader = "X-Payment-Proof-Version"

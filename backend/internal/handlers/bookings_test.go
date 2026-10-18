@@ -88,22 +88,20 @@ func decodeCreatedBooking(t *testing.T, response *http.Response) models.Booking 
 
 func TestCreateBookingCalculatesDPAndEnforcesCapacity(t *testing.T) {
 	app, _ := bookingTestApp(t)
-	for _, name := range []string{"Alya", "Bima"} {
-		response := postBooking(t, app, name)
-		if response.StatusCode != fiber.StatusCreated {
-			t.Fatalf("expected booking for %s to succeed, got %d", name, response.StatusCode)
-		}
-		var payload struct {
-			Booking models.Booking `json:"booking"`
-		}
-		if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-			t.Fatal(err)
-		}
-		if payload.Booking.AmountDue != 625000 {
-			t.Fatalf("expected DP 625000, got %d", payload.Booking.AmountDue)
-		}
+	response := postBooking(t, app, "Alya")
+	if response.StatusCode != fiber.StatusCreated {
+		t.Fatalf("expected booking for Alya to succeed, got %d", response.StatusCode)
 	}
-	if response := postBooking(t, app, "Citra"); response.StatusCode != fiber.StatusConflict {
+	var payload struct {
+		Booking models.Booking `json:"booking"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Booking.AmountDue != 625000 {
+		t.Fatalf("expected DP 625000, got %d", payload.Booking.AmountDue)
+	}
+	if response := postBooking(t, app, "Bima"); response.StatusCode != fiber.StatusConflict {
 		t.Fatalf("expected full slot to return 409, got %d", response.StatusCode)
 	}
 }

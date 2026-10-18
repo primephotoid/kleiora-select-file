@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { GraduationCap, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 export interface CampusItem {
   name: string;
@@ -149,7 +149,7 @@ export function CampusAutocomplete({
 
   return (
     <div ref={containerRef} className="relative w-full">
-      <div className="relative">
+      <div>
         <input
           ref={inputRef}
           required
@@ -170,9 +170,6 @@ export function CampusAutocomplete({
           className={className}
           placeholder={placeholder}
         />
-        <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
-          <GraduationCap className="h-4 w-4" />
-        </div>
       </div>
 
       {open && filtered.length > 0 && (
@@ -205,13 +202,7 @@ export function CampusAutocomplete({
                     : 'text-[var(--text)] hover:bg-[var(--surface2)]'
                 }`}
               >
-                <div className="flex items-center gap-2.5 overflow-hidden">
-                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
-                    isHighlighted ? 'bg-[var(--gold)] text-white' : 'bg-[var(--surface2)] text-[var(--gold-dark)]'
-                  }`}>
-                    <GraduationCap className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="font-semibold text-gray-900">{campus.name}</span>
                       {campus.short && (
@@ -226,7 +217,6 @@ export function CampusAutocomplete({
                       </span>
                     )}
                   </div>
-                </div>
                 {isSelected && (
                   <Check className="h-4 w-4 shrink-0 text-[var(--gold-dark)] ml-2" />
                 )}

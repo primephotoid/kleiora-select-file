@@ -183,7 +183,9 @@ func TestWebhookAuthenticityAmountAndIdempotency(t *testing.T) {
 
 func TestExpiredReservationReleasesSlotAndLatePaymentNeedsReview(t *testing.T) {
 	app, db, h, b, token := qrisTest(t)
-	createBookingForTest(t, app, "Second Client")
+	if slotCapacity > 1 {
+		createBookingForTest(t, app, "Second Client")
+	}
 	past := time.Now().Add(-time.Minute)
 	db.Model(&b).Update("payment_expires_at", past)
 	if resp := postBooking(t, app, "Replacement Client"); resp.StatusCode != 201 {
@@ -248,7 +250,9 @@ func TestDelayedSettlementNoticeUsesProviderTimeAndDoesNotReclaimSlot(t *testing
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			app, db, h, b, _ := qrisTest(t)
-			createBookingForTest(t, app, "Second Client")
+			if slotCapacity > 1 {
+				createBookingForTest(t, app, "Second Client")
+			}
 			if err := db.Model(&b).Updates(map[string]any{"payment_expires_at": deadline, "status": "expired"}).Error; err != nil {
 				t.Fatal(err)
 			}

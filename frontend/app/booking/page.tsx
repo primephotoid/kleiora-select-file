@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, CheckCircle2, Clock, Loader2, Upload, MapPin, Calendar, Landmark, QrCode, Wallet, ImageIcon, Copy, Download, AlertCircle, X } from 'lucide-react';
 import { SiteFooter, SiteHeader } from '@/components/site-header';
@@ -22,7 +22,25 @@ function todayInMakassar() {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+function cleanWhatsAppNumber(input: string): { cleaned: string; hadSymbols: boolean } {
+  const trimmed = input.trim();
+  const hadSymbols = /[-+() .]/.test(trimmed);
+  let cleaned = trimmed;
+  if (cleaned.startsWith('+62')) {
+    cleaned = '0' + cleaned.slice(3);
+  } else if (cleaned.startsWith('62')) {
+    cleaned = '0' + cleaned.slice(2);
+  } else if (cleaned.startsWith('+')) {
+    cleaned = cleaned.slice(1);
+  }
+  cleaned = cleaned.replace(/\D/g, '');
+  return { cleaned, hadSymbols };
+}
+
+const MAX_DRAFT_AGE_MS = 24 * 60 * 60 * 1000; // Batas draft 24 jam
+
 function BookingFlow() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { region, setRegion, detecting } = useRegion();
   const [packages, setPackages] = useState<PackageItem[]>([]);
@@ -46,6 +64,7 @@ function BookingFlow() {
   const [dpCustomError, setDpCustomError] = useState('');
   const [paymentMethodError, setPaymentMethodError] = useState('');
   const [proofError, setProofError] = useState('');
+  const [phoneNotice, setPhoneNotice] = useState('');
   
   // QRIS Midtrans states
   const [requestID, setRequestID] = useState('');
@@ -86,27 +105,53 @@ function BookingFlow() {
     }
   }
 
-  // Restore state on mount
+  // Restore state on mount (dengan batas kedaluwarsa 24 jam)
   useEffect(() => {
     const freshID = Array.from(crypto.getRandomValues(new Uint8Array(32)), v => v.toString(16).padStart(2, '0')).join('');
     setRequestID(freshID);
     try {
-      const saved = JSON.parse(localStorage.getItem('kleiora_booking_state') || 'null');
-      if (saved?.booking && saved?.bookingAccessToken) {
-        setBooking(saved.booking);
-        setBookingAccessToken(saved.bookingAccessToken);
-        setSelectedCode(saved.booking.package.code);
-        if (saved.booking.payment_method) setPaymentMethod(saved.booking.payment_method);
-        setStep(3);
-        if (saved.requestID) setRequestID(saved.requestID);
-      } else if (saved?.form) {
-        setForm(saved.form);
-        if (saved.form.custom_dp_amount) {
-          setDpRawInput(saved.form.custom_dp_amount.toLocaleString('id-ID'));
+      const rawSaved = localStorage.getItem('kleiora_booking_state');
+      if (rawSaved) {
+        const saved = JSON.parse(rawSaved);
+        const savedAt = Number(saved?.savedAt || 0);
+        const isExpired = !savedAt || (Date.now() - savedAt > MAX_DRAFT_AGE_MS);
+
+        // Jika draft sudah lewat 24 jam atau data usang tanpa timestamp:
+        if (isExpired) {
+          localStorage.removeItem('kleiora_booking_state');
+          router.replace('/');
+          return;
         }
-        setSelectedCode(saved.selectedCode || '');
-        if (saved.paymentMethod) setPaymentMethod(saved.paymentMethod);
-        if (saved.requestID) setRequestID(saved.requestID);
+
+        // Jika tanggal sesi yang tersimpan sudah berlalu di masa lalu:
+        if (saved?.form?.session_date && saved.form.session_date < todayInMakassar()) {
+          localStorage.removeItem('kleiora_booking_state');
+          router.replace('/');
+          return;
+        }
+
+        if (saved?.booking && saved?.bookingAccessToken) {
+          // Jika waktu pembayaran booking sudah kedaluwarsa:
+          if (saved.booking.payment_expires_at && Date.parse(saved.booking.payment_expires_at) < Date.now()) {
+            localStorage.removeItem('kleiora_booking_state');
+            router.replace('/');
+            return;
+          }
+          setBooking(saved.booking);
+          setBookingAccessToken(saved.bookingAccessToken);
+          setSelectedCode(saved.booking.package.code);
+          if (saved.booking.payment_method) setPaymentMethod(saved.booking.payment_method);
+          setStep(3);
+          if (saved.requestID) setRequestID(saved.requestID);
+        } else if (saved?.form) {
+          setForm(saved.form);
+          if (saved.form.custom_dp_amount) {
+            setDpRawInput(saved.form.custom_dp_amount.toLocaleString('id-ID'));
+          }
+          setSelectedCode(saved.selectedCode || '');
+          if (saved.paymentMethod) setPaymentMethod(saved.paymentMethod);
+          if (saved.requestID) setRequestID(saved.requestID);
+        }
       }
     } catch {
       localStorage.removeItem('kleiora_booking_state');
@@ -127,14 +172,40 @@ function BookingFlow() {
         .catch(err => setError(err.message));
     }
     setMounted(true);
-  }, []);
+  }, [router]);
 
-  // Save state on change
+  // Pantau kedaluwarsa saat tab di handphone aktif kembali dari background
+  useEffect(() => {
+    function checkExpiry() {
+      try {
+        const rawSaved = localStorage.getItem('kleiora_booking_state');
+        if (rawSaved) {
+          const saved = JSON.parse(rawSaved);
+          const savedAt = Number(saved?.savedAt || 0);
+          if (!savedAt || Date.now() - savedAt > MAX_DRAFT_AGE_MS) {
+            localStorage.removeItem('kleiora_booking_state');
+            router.replace('/');
+          }
+        }
+      } catch {
+        localStorage.removeItem('kleiora_booking_state');
+      }
+    }
+
+    window.addEventListener('focus', checkExpiry);
+    document.addEventListener('visibilitychange', checkExpiry);
+    return () => {
+      window.removeEventListener('focus', checkExpiry);
+      document.removeEventListener('visibilitychange', checkExpiry);
+    };
+  }, [router]);
+
+  // Save state on change (dengan timestamp savedAt)
   useEffect(() => {
     if (!mounted) return;
     if (step < 4) {
       localStorage.setItem('kleiora_booking_state', JSON.stringify({
-        step, selectedCode, form, paymentMethod, booking, bookingAccessToken, requestID
+        step, selectedCode, form, paymentMethod, booking, bookingAccessToken, requestID, savedAt: Date.now()
       }));
     } else {
       localStorage.removeItem('kleiora_booking_state');
@@ -532,7 +603,7 @@ function BookingFlow() {
                   <Field
                     label="No. WhatsApp"
                     error={fieldErrors.whatsapp}
-                    hint="Pastikan nomor WhatsApp aktif agar kami mudah menghubungi kamu."
+                    hint="Nomor disimpan hanya angka (tanda '+' dan '-' otomatis dihapus). Pastikan nomor WhatsApp aktif."
                   >
                     <input
                       required
@@ -543,10 +614,33 @@ function BookingFlow() {
                       autoComplete="tel"
                       aria-invalid={Boolean(fieldErrors.whatsapp)}
                       value={form.whatsapp}
-                      onChange={e => updateField('whatsapp', e.target.value.replace(/[^0-9+]/g, ''))}
+                      onPaste={e => {
+                        e.preventDefault();
+                        const text = e.clipboardData.getData('text');
+                        const { cleaned, hadSymbols } = cleanWhatsAppNumber(text);
+                        updateField('whatsapp', cleaned);
+                        if (hadSymbols) {
+                          setPhoneNotice("Tanda '+' dan '-' otomatis dihapus. Nomor diformat menjadi angka.");
+                        } else {
+                          setPhoneNotice('');
+                        }
+                      }}
+                      onChange={e => {
+                        const { cleaned, hadSymbols } = cleanWhatsAppNumber(e.target.value);
+                        updateField('whatsapp', cleaned);
+                        if (hadSymbols) {
+                          setPhoneNotice("Tanda '+' dan '-' otomatis dihapus.");
+                        }
+                      }}
                       className="field"
                       placeholder="Contoh: 081234567890"
                     />
+                    {phoneNotice && (
+                      <div role="status" className="mt-1.5 flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg animate-in fade-in slide-in-from-top-1">
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                        <span>{phoneNotice}</span>
+                      </div>
+                    )}
                   </Field>
                 </div>
                 <div className="grid gap-5 sm:grid-cols-2">
