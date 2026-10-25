@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,8 +44,33 @@ func (h *Handler) withBookingYearLock(date string, persist func(*gorm.DB) error)
 	})
 }
 
+// bufferHours returns the target hour and its immediate neighbors (1 hour before and 1 hour after)
+// to ensure a mandatory 1-hour buffer between any two bookings.
+func bufferHours(hour string) []string {
+	h, err := strconv.Atoi(hour)
+	if err != nil {
+		return []string{hour}
+	}
+	hours := []string{fmt.Sprintf("%02d", h)}
+	if h > 0 {
+		hours = append(hours, fmt.Sprintf("%02d", h-1))
+	}
+	if h < 23 {
+		hours = append(hours, fmt.Sprintf("%02d", h+1))
+	}
+	return hours
+}
+
 func occupiedBookings(db *gorm.DB, date, hour string) *gorm.DB {
 	return db.Model(&models.Booking{}).Where("session_date = ? AND session_hour = ?", date, hour).
+		Where("status NOT IN ?", []string{"cancelled", "expired", "payment_review"}).
+		Where("status <> ? OR payment_status <> ? OR payment_expires_at IS NULL OR payment_expires_at > ?", "pending_payment", "pending", time.Now())
+}
+
+// occupiedBookingsWithBuffer finds any active bookings that conflict with the given date and hour,
+// taking into account the 1-hour buffer before and after the hour.
+func occupiedBookingsWithBuffer(db *gorm.DB, date, hour string) *gorm.DB {
+	return db.Model(&models.Booking{}).Where("session_date = ? AND session_hour IN ?", date, bufferHours(hour)).
 		Where("status NOT IN ?", []string{"cancelled", "expired", "payment_review"}).
 		Where("status <> ? OR payment_status <> ? OR payment_expires_at IS NULL OR payment_expires_at > ?", "pending_payment", "pending", time.Now())
 }

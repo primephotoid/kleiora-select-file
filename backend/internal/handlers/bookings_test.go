@@ -738,4 +738,139 @@ func TestGetDailySchedule(t *testing.T) {
 	}
 }
 
+func TestBookingOneHourBufferBeforeAndAfter(t *testing.T) {
+	app, db := bookingTestApp(t)
+	h := NewHandler(db, &config.Config{JWTSecret: "secret"}, services.NewDriveService(""))
+	app.Patch("/studio/bookings/:code/reschedule", h.RescheduleBooking)
+
+	testDate := "2099-11-10"
+
+	// 1. Client books at 15:00 (jam 3 sore)
+	resp := postBookingAt(t, app, "Client 15", testDate, "15")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected booking at 15:00 to succeed, got %d", resp.StatusCode)
+	}
+
+	// 2. Check availability: jam 2 (14:00) and jam 4 (16:00) must be full (available: false, remaining: 0)
+	req := httptest.NewRequest(http.MethodGet, "/availability?date="+testDate, nil)
+	availResp, err := app.Test(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if availResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK from availability, got %d", availResp.StatusCode)
+	}
+
+	var availResult struct {
+		Slots []struct {
+			Hour      string `json:"hour"`
+			Remaining int64  `json:"remaining"`
+			Available bool   `json:"available"`
+		} `json:"slots"`
+	}
+	if err := json.NewDecoder(availResp.Body).Decode(&availResult); err != nil {
+		t.Fatal(err)
+	}
+
+	slotMap := make(map[string]struct {
+		Remaining int64
+		Available bool
+	})
+	for _, s := range availResult.Slots {
+		slotMap[s.Hour] = struct {
+			Remaining int64
+			Available bool
+		}{Remaining: s.Remaining, Available: s.Available}
+	}
+
+	// 14:00 (1 jam sebelum 15:00) must be full
+	if slotMap["14"].Available || slotMap["14"].Remaining != 0 {
+		t.Fatalf("expected hour 14 to be full, got available=%v, remaining=%d", slotMap["14"].Available, slotMap["14"].Remaining)
+	}
+	// 15:00 (the booked slot) must be full
+	if slotMap["15"].Available || slotMap["15"].Remaining != 0 {
+		t.Fatalf("expected hour 15 to be full, got available=%v, remaining=%d", slotMap["15"].Available, slotMap["15"].Remaining)
+	}
+	// 16:00 (1 jam sesudah 15:00) must be full
+	if slotMap["16"].Available || slotMap["16"].Remaining != 0 {
+		t.Fatalf("expected hour 16 to be full, got available=%v, remaining=%d", slotMap["16"].Available, slotMap["16"].Remaining)
+	}
+	// 13:00 (2 jam sebelum 15:00) must be available
+	if !slotMap["13"].Available || slotMap["13"].Remaining != 1 {
+		t.Fatalf("expected hour 13 to be available, got available=%v, remaining=%d", slotMap["13"].Available, slotMap["13"].Remaining)
+	}
+	// 17:00 (2 jam sesudah 15:00) must be available
+	if !slotMap["17"].Available || slotMap["17"].Remaining != 1 {
+		t.Fatalf("expected hour 17 to be available, got available=%v, remaining=%d", slotMap["17"].Available, slotMap["17"].Remaining)
+	}
+
+	// 3. Attempting to book at 14:00 must be rejected with 409 Conflict
+	resp14 := postBookingAt(t, app, "Client 14", testDate, "14")
+	if resp14.StatusCode != http.StatusConflict {
+		t.Fatalf("expected booking at 14:00 to conflict (409), got %d", resp14.StatusCode)
+	}
+
+	// 4. Attempting to book at 16:00 must be rejected with 409 Conflict
+	resp16 := postBookingAt(t, app, "Client 16", testDate, "16")
+	if resp16.StatusCode != http.StatusConflict {
+		t.Fatalf("expected booking at 16:00 to conflict (409), got %d", resp16.StatusCode)
+	}
+
+	// 5. Attempting to book at 15:00 again must be rejected with 409 Conflict
+	resp15 := postBookingAt(t, app, "Client 15 Duplicate", testDate, "15")
+	if resp15.StatusCode != http.StatusConflict {
+		t.Fatalf("expected booking at 15:00 duplicate to conflict (409), got %d", resp15.StatusCode)
+	}
+
+	// 6. Booking at 13:00 must succeed
+	resp13 := postBookingAt(t, app, "Client 13", testDate, "13")
+	if resp13.StatusCode != http.StatusCreated {
+		t.Fatalf("expected booking at 13:00 to succeed, got %d", resp13.StatusCode)
+	}
+
+	// 7. Booking at 17:00 must succeed
+	resp17 := postBookingAt(t, app, "Client 17", testDate, "17")
+	if resp17.StatusCode != http.StatusCreated {
+		t.Fatalf("expected booking at 17:00 to succeed, got %d", resp17.StatusCode)
+	}
+
+	var created17 struct {
+		Booking struct {
+			Code string `json:"code"`
+		} `json:"booking"`
+	}
+	json.NewDecoder(resp17.Body).Decode(&created17)
+
+	// 8. Rescheduling Client 17 to 16:00 (conflicts with 15:00) must return 409
+	rescheduleBody, _ := json.Marshal(map[string]string{
+		"session_date": testDate,
+		"session_hour": "16",
+	})
+	patchReq := httptest.NewRequest(http.MethodPatch, "/studio/bookings/"+created17.Booking.Code+"/reschedule", bytes.NewReader(rescheduleBody))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := app.Test(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patchResp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected reschedule to 16:00 to conflict (409), got %d", patchResp.StatusCode)
+	}
+
+	// 9. Rescheduling Client 17 to 19:00 (clean slot) must succeed
+	rescheduleBody19, _ := json.Marshal(map[string]string{
+		"session_date": testDate,
+		"session_hour": "19",
+	})
+	patchReq19 := httptest.NewRequest(http.MethodPatch, "/studio/bookings/"+created17.Booking.Code+"/reschedule", bytes.NewReader(rescheduleBody19))
+	patchReq19.Header.Set("Content-Type", "application/json")
+	patchResp19, err := app.Test(patchReq19)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patchResp19.StatusCode != http.StatusOK {
+		t.Fatalf("expected reschedule to 19:00 to succeed (200), got %d", patchResp19.StatusCode)
+	}
+}
+
+
 

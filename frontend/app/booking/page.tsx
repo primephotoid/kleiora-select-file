@@ -666,7 +666,7 @@ function BookingFlow() {
                     <Field
                       label={<span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-[var(--gold)]" /> Jam Sesi Foto</span>}
                       error={fieldErrors.session_hour}
-                      hint="Pilih jam mulai sesi foto."
+                      hint="Pilih jam mulai sesi foto (sistem otomatis memberi jeda 1 jam sebelum & sesudah sesi agar jadwal tidak padat)."
                     >
                       <select
                         required

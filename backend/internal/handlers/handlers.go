@@ -353,7 +353,7 @@ func (h *Handler) GetAvailability(c *fiber.Ctx) error {
 	for hour := 6; hour <= 19; hour++ {
 		hourValue := fmt.Sprintf("%02d", hour)
 		var count int64
-		if err := occupiedBookings(h.db, date, hourValue).Count(&count).Error; err != nil {
+		if err := occupiedBookingsWithBuffer(h.db, date, hourValue).Count(&count).Error; err != nil {
 			return apiError(c, fiber.StatusInternalServerError, "Failed to load availability")
 		}
 		remaining := slotCapacity - count
@@ -468,7 +468,7 @@ func (h *Handler) CreateBooking(c *fiber.Ctx) error {
 				}
 			}
 			var count int64
-			if err := occupiedBookings(tx, req.SessionDate, req.SessionHour).Count(&count).Error; err != nil {
+			if err := occupiedBookingsWithBuffer(tx, req.SessionDate, req.SessionHour).Count(&count).Error; err != nil {
 				return err
 			}
 			if count >= slotCapacity {
@@ -880,7 +880,7 @@ func (h *Handler) RescheduleBooking(c *fiber.Ctx) error {
 	// Check slot availability for the new date/hour (only if date or hour changed)
 	if req.SessionDate != "" || req.SessionHour != "" {
 		var count int64
-		q := occupiedBookings(h.db, newDate, newHour).Where("id <> ?", booking.ID)
+		q := occupiedBookingsWithBuffer(h.db, newDate, newHour).Where("id <> ?", booking.ID)
 		if err := q.Count(&count).Error; err != nil {
 			return apiError(c, fiber.StatusInternalServerError, "Gagal memeriksa ketersediaan slot")
 		}
